@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, FileText, Copy, AlertCircle } from 'lucide-react';
+import { Sparkles, FileText, Copy, AlertCircle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,14 +10,15 @@ const ResumeWorkshop = () => {
   const [company, setCompany] = useState('');
   const [position, setPosition] = useState('');
   const [jdContent, setJdContent] = useState('');
-  const [keywords, setKeywords] = useState([]);
+  const [jdInfo, setJdInfo] = useState(null);
   const [resumeResult, setResumeResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const handleGenerate = async () => {
     if (!company.trim() || !position.trim() || !jdContent.trim()) {
-      setError('请填写目标公司、目标岗位和岗位JD内容');
+      setError('请填写完整信息');
       return;
     }
 
@@ -26,17 +27,19 @@ const ResumeWorkshop = () => {
 
     try {
       const parseRes = await parseJD({ company, position, jd_content: jdContent });
-      setKeywords(parseRes.data?.keywords || []);
+      const parsedJdInfo = parseRes.data || {};
+      setJdInfo(parsedJdInfo);
 
       const generateRes = await generateResume({
         company,
         position,
         jd_content: jdContent,
+        jd_info: parsedJdInfo,
       });
       setResumeResult(generateRes.data || null);
       setStep('result');
     } catch (err) {
-      setError(err.message || '生成失败，请稍后重试');
+      setError(err.message || '生成失败');
     } finally {
       setLoading(false);
     }
@@ -96,157 +99,183 @@ const ResumeWorkshop = () => {
     }
 
     navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#FAFAFA] mb-2">简历工坊</h1>
-        <p className="text-[#A1A1AA]">粘贴目标岗位JD，AI从知识库匹配经历生成简历</p>
-      </div>
-
-      {step === 'input' && (
-        <div className="space-y-8">
-          {/* 提示信息 */}
-          <div className="p-4 rounded-xl bg-[#00D9FF]/10 border border-[#00D9FF]/20 flex items-start gap-3">
-            <AlertCircle size={18} className="text-[#00D9FF] mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-[#A1A1AA]">
-              <p className="text-[#FAFAFA] font-medium mb-1">简历内容来自知识库</p>
-              <p>基本信息和教育背景请在<a href="/#/knowledge" className="text-[#00D9FF] hover:underline">知识库</a>中填写，AI会自动从知识库匹配你的实习和项目经历。</p>
-            </div>
-          </div>
-
-          {/* 目标岗位 */}
-          <div className="p-5 rounded-xl bg-[#18181B] border border-[#27272A]">
-            <h3 className="text-lg font-semibold text-[#FAFAFA] mb-4 flex items-center gap-2">
-              <FileText size={18} className="text-[#10B981]" /> 目标岗位
-            </h3>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm text-[#A1A1AA] mb-2">目标公司 *</label>
-                <Input
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  placeholder="如：腾讯、字节跳动"
-                  className="h-10 bg-[#0A0A0B] border-[#27272A] text-[#FAFAFA] placeholder:text-[#71717A] focus:border-[#00D9FF]"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-[#A1A1AA] mb-2">目标岗位 *</label>
-                <Input
-                  value={position}
-                  onChange={(e) => setPosition(e.target.value)}
-                  placeholder="如：后端开发实习生"
-                  className="h-10 bg-[#0A0A0B] border-[#27272A] text-[#FAFAFA] placeholder:text-[#71717A] focus:border-[#00D9FF]"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm text-[#A1A1AA] mb-2">粘贴岗位JD *</label>
-              <Textarea
-                value={jdContent}
-                onChange={(e) => setJdContent(e.target.value)}
-                placeholder="请将岗位描述粘贴到此处..."
-                className="min-h-[200px] bg-[#0A0A0B] border-[#27272A] text-[#FAFAFA] placeholder:text-[#71717A] focus:border-[#00D9FF]"
-              />
-            </div>
-          </div>
-
-          {error && <p className="text-sm text-[#F87171]">{error}</p>}
-
-          <Button
-            onClick={handleGenerate}
-            disabled={loading}
-            className="w-full h-12 aurora-gradient text-white border-0 text-base aurora-glow hover:opacity-90"
+    <div className="min-h-screen pt-16 relative z-10">
+      <div className="max-w-3xl mx-auto px-6 py-20">
+        {/* 页面标题 */}
+        <div className="mb-16">
+          <p className="text-xs text-[#52525B] tracking-[0.2em] mb-4">RESUME</p>
+          <h1
+            className="text-4xl md:text-5xl font-bold text-[#FAFAFA] mb-4"
+            style={{ fontFamily: '"Noto Serif SC", serif' }}
           >
-            <Sparkles size={18} className="mr-2" /> {loading ? '正在生成...' : '从知识库匹配经历并生成简历'}
-          </Button>
+            简历工坊
+          </h1>
+          <p className="text-[#71717A]">粘贴目标岗位JD，AI从知识库匹配经历生成简历</p>
         </div>
-      )}
 
-      {step === 'result' && (
-        <div className="space-y-6">
-          <div className="p-5 rounded-xl bg-[#18181B] border border-[#27272A]">
-            <h3 className="text-lg font-semibold text-[#FAFAFA] mb-3 flex items-center gap-2">
-              <FileText size={18} className="text-[#00D9FF]" /> JD关键词
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {(keywords.length > 0 ? keywords.map((item) => item.keyword) : []).map((tag) => (
-                <span key={tag} className="px-3 py-1 rounded-full text-sm bg-[#00D9FF]/10 text-[#00D9FF] border border-[#00D9FF]/20">
-                  {tag}
-                </span>
-              ))}
-              {keywords.length === 0 && <span className="text-sm text-[#A1A1AA]">未提取到关键词</span>}
+        {step === 'input' && (
+          <div className="space-y-12">
+            {/* 提示 */}
+            <div className="flex items-start gap-3 py-4 border-l border-[#3F3F46] pl-4">
+              <AlertCircle size={16} className="text-[#52525B] mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-[#52525B]">
+                简历内容来自知识库，基本信息和教育背景请在
+                <a href="/#/knowledge" className="text-[#71717A] hover:text-[#FAFAFA] transition-colors"> 知识库 </a>
+                中填写
+              </p>
+            </div>
+
+            {/* 目标岗位 */}
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs text-[#52525B] tracking-wider mb-3">目标公司</label>
+                  <Input
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    placeholder="腾讯"
+                    className="h-12 bg-transparent border-[#3F3F46] text-[#FAFAFA] placeholder:text-[#3F3F46] focus:border-[#52525B] rounded-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#52525B] tracking-wider mb-3">目标岗位</label>
+                  <Input
+                    value={position}
+                    onChange={(e) => setPosition(e.target.value)}
+                    placeholder="后端开发实习生"
+                    className="h-12 bg-transparent border-[#3F3F46] text-[#FAFAFA] placeholder:text-[#3F3F46] focus:border-[#52525B] rounded-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-[#52525B] tracking-wider mb-3">岗位JD</label>
+                <Textarea
+                  value={jdContent}
+                  onChange={(e) => setJdContent(e.target.value)}
+                  placeholder="请将岗位描述粘贴到此处..."
+                  className="min-h-[240px] bg-transparent border-[#3F3F46] text-[#FAFAFA] placeholder:text-[#3F3F46] focus:border-[#52525B] rounded-none resize-none"
+                />
+              </div>
+            </div>
+
+            {error && <p className="text-sm text-[#EF4444]">{error}</p>}
+
+            <Button
+              onClick={handleGenerate}
+              disabled={loading}
+              className="w-full h-14 bg-white text-black hover:bg-[#E5E5E5] border-0 text-sm font-medium tracking-wide transition-all duration-300"
+            >
+              {loading ? '生成中...' : '生成简历'}
+            </Button>
+          </div>
+        )}
+
+        {step === 'result' && (
+          <div className="space-y-12">
+            {/* JD分析 */}
+            <div className="py-8 border-t border-[#3F3F46]">
+              <p className="text-xs text-[#52525B] tracking-wider mb-6">JD 分析</p>
+              {jdInfo?.hard_requirements?.length > 0 && (
+                <div className="mb-6">
+                  <p className="text-xs text-[#EF4444] mb-3">硬性要求</p>
+                  <ul className="space-y-2">
+                    {jdInfo.hard_requirements.map((req, i) => (
+                      <li key={i} className="text-sm text-[#A1A1AA]">• {req}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {jdInfo?.core_skills?.length > 0 && (
+                <div>
+                  <p className="text-xs text-[#10B981] mb-3">核心技能</p>
+                  <ul className="space-y-2">
+                    {jdInfo.core_skills.map((skill, i) => (
+                      <li key={i} className="text-sm text-[#A1A1AA]">• {skill}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* 简历内容 */}
+            <ResumeContent content={resumeResult?.content} />
+
+            {/* 操作按钮 */}
+            <div className="flex gap-4 pt-8 border-t border-[#3F3F46]">
+              <Button
+                variant="outline"
+                onClick={() => setStep('input')}
+                className="flex-1 h-12 border-[#3F3F46] text-[#71717A] hover:bg-transparent hover:text-[#FAFAFA] transition-colors duration-300"
+              >
+                重新生成
+              </Button>
+              <Button
+                onClick={handleCopy}
+                className={`flex-1 h-12 ${copied ? 'bg-[#10B981]' : 'bg-white text-black hover:bg-[#E5E5E5]'} border-0 text-sm font-medium transition-all duration-300`}
+              >
+                {copied ? '已复制' : '复制简历'}
+              </Button>
             </div>
           </div>
-
-          <ResumeContent content={resumeResult?.content} />
-
-          <div className="flex gap-4">
-            <Button variant="outline" onClick={() => setStep('input')} className="flex-1 h-12 border-[#27272A] text-[#D4D4D8] hover:bg-[#18181B]">
-              调整输入
-            </Button>
-            <Button onClick={handleCopy} className="flex-1 h-12 aurora-gradient text-white border-0 aurora-glow hover:opacity-90">
-              <Copy size={16} className="mr-2" /> 复制简历
-            </Button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
 
 const ResumeContent = ({ content }) => {
-  if (!content) {
-    return (
-      <div className="p-5 rounded-xl bg-[#18181B] border border-[#27272A]">
-        <p className="text-sm text-[#A1A1AA]">暂无生成内容，请稍后重试。</p>
-      </div>
-    );
-  }
+  if (!content) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* 基本信息 */}
       {content.header && (
-        <div className="p-5 rounded-xl bg-[#18181B] border border-[#27272A]">
-          <h3 className="text-lg font-semibold text-[#FAFAFA] mb-3">基本信息</h3>
-          <p className="text-xl font-bold text-[#FAFAFA]">{content.header.name || '姓名'}</p>
-          <p className="text-sm text-[#A1A1AA] mt-1">
-            {content.header.phone} {content.header.email && `| ${content.header.email}`}
+        <div className="py-6 border-t border-[#3F3F46]">
+          <p className="text-xs text-[#52525B] tracking-wider mb-4">基本信息</p>
+          <p className="text-2xl font-semibold text-[#FAFAFA]" style={{ fontFamily: '"Noto Serif SC", serif' }}>
+            {content.header.name || '姓名'}
+          </p>
+          <p className="text-sm text-[#71717A] mt-2">
+            {content.header.phone} {content.header.email && `· ${content.header.email}`}
           </p>
         </div>
       )}
 
       {/* 教育背景 */}
       {content.education && (content.education.school || content.education.major) && (
-        <div className="p-5 rounded-xl bg-[#18181B] border border-[#27272A]">
-          <h3 className="text-lg font-semibold text-[#FAFAFA] mb-3">教育背景</h3>
-          <p className="text-[#D4D4D8]">
-            {content.education.school} | {content.education.major} | {content.education.degree}
-          </p>
+        <div className="py-6 border-t border-[#3F3F46]">
+          <p className="text-xs text-[#52525B] tracking-wider mb-4">教育背景</p>
+          <p className="text-[#FAFAFA]">{content.education.school} · {content.education.major} · {content.education.degree}</p>
           {(content.education.startDate || content.education.endDate) && (
-            <p className="text-sm text-[#A1A1AA] mt-1">{content.education.startDate} - {content.education.endDate || '至今'}</p>
+            <p className="text-sm text-[#52525B] mt-2">{content.education.startDate} — {content.education.endDate || '至今'}</p>
           )}
         </div>
       )}
 
       {/* 实习经历 */}
       {content.internships?.length > 0 && (
-        <div className="p-5 rounded-xl bg-[#18181B] border border-[#27272A]">
-          <h3 className="text-lg font-semibold text-[#FAFAFA] mb-4">实习经历</h3>
-          <div className="space-y-4">
+        <div className="py-6 border-t border-[#3F3F46]">
+          <p className="text-xs text-[#52525B] tracking-wider mb-6">实习经历</p>
+          <div className="space-y-8">
             {content.internships.map((exp, idx) => (
-              <div key={idx} className="border-l-2 border-[#00D9FF]/30 pl-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-[#FAFAFA] font-medium">{exp.company} | {exp.role}</p>
-                  <p className="text-xs text-[#71717A]">{exp.startDate} - {exp.endDate || '至今'}</p>
+              <div key={idx}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[#FAFAFA]">{exp.company} · {exp.role}</p>
+                  <p className="text-xs text-[#52525B]">{exp.startDate} — {exp.endDate || '至今'}</p>
                 </div>
-                <ul className="mt-2 space-y-1">
+                <ul className="space-y-2">
                   {(Array.isArray(exp.description) ? exp.description : [exp.description]).filter(Boolean).map((d, i) => (
-                    <li key={i} className="text-sm text-[#D4D4D8]">• {d}</li>
+                    <li key={i} className="text-sm text-[#A1A1AA]">• {d}</li>
                   ))}
                 </ul>
+                {exp.match_reason && (
+                  <p className="text-xs text-[#10B981] mt-3">→ {exp.match_reason}</p>
+                )}
               </div>
             ))}
           </div>
@@ -255,17 +284,20 @@ const ResumeContent = ({ content }) => {
 
       {/* 项目经历 */}
       {content.projects?.length > 0 && (
-        <div className="p-5 rounded-xl bg-[#18181B] border border-[#27272A]">
-          <h3 className="text-lg font-semibold text-[#FAFAFA] mb-4">项目经历</h3>
-          <div className="space-y-4">
+        <div className="py-6 border-t border-[#3F3F46]">
+          <p className="text-xs text-[#52525B] tracking-wider mb-6">项目经历</p>
+          <div className="space-y-8">
             {content.projects.map((proj, idx) => (
-              <div key={idx} className="border-l-2 border-[#A855F7]/30 pl-4">
-                <p className="text-[#FAFAFA] font-medium">{proj.name} | {proj.role}</p>
-                <ul className="mt-2 space-y-1">
+              <div key={idx}>
+                <p className="text-[#FAFAFA] mb-3">{proj.name} · {proj.role}</p>
+                <ul className="space-y-2">
                   {(Array.isArray(proj.description) ? proj.description : [proj.description]).filter(Boolean).map((d, i) => (
-                    <li key={i} className="text-sm text-[#D4D4D8]">• {d}</li>
+                    <li key={i} className="text-sm text-[#A1A1AA]">• {d}</li>
                   ))}
                 </ul>
+                {proj.match_reason && (
+                  <p className="text-xs text-[#A855F7] mt-3">→ {proj.match_reason}</p>
+                )}
               </div>
             ))}
           </div>
@@ -274,36 +306,28 @@ const ResumeContent = ({ content }) => {
 
       {/* 技能清单 */}
       {content.skills && (content.skills.professional?.length > 0 || content.skills.tools?.length > 0) && (
-        <div className="p-5 rounded-xl bg-[#18181B] border border-[#27272A]">
-          <h3 className="text-lg font-semibold text-[#FAFAFA] mb-4">技能清单</h3>
+        <div className="py-6 border-t border-[#3F3F46]">
+          <p className="text-xs text-[#52525B] tracking-wider mb-4">技能清单</p>
           {content.skills.professional?.length > 0 && (
-            <div className="mb-3">
-              <p className="text-sm text-[#A1A1AA] mb-2">专业技能</p>
-              <ul className="space-y-1">
-                {(Array.isArray(content.skills.professional) ? content.skills.professional : [content.skills.professional]).map((s, i) => (
-                  <li key={i} className="text-sm text-[#D4D4D8]">• {s}</li>
-                ))}
-              </ul>
-            </div>
+            <ul className="space-y-2 mb-4">
+              {(Array.isArray(content.skills.professional) ? content.skills.professional : [content.skills.professional]).map((s, i) => (
+                <li key={i} className="text-sm text-[#A1A1AA]">• {s}</li>
+              ))}
+            </ul>
           )}
           {content.skills.tools?.length > 0 && (
-            <div>
-              <p className="text-sm text-[#A1A1AA] mb-2">工具</p>
-              <div className="flex flex-wrap gap-2">
-                {(Array.isArray(content.skills.tools) ? content.skills.tools : [content.skills.tools]).map((t, i) => (
-                  <span key={i} className="px-2 py-1 rounded text-xs bg-[#27272A] text-[#A1A1AA]">{t}</span>
-                ))}
-              </div>
-            </div>
+            <p className="text-sm text-[#71717A]">
+              工具：{(Array.isArray(content.skills.tools) ? content.skills.tools : [content.skills.tools]).join(' · ')}
+            </p>
           )}
         </div>
       )}
 
       {/* 自我评价 */}
       {content.self_evaluation && (
-        <div className="p-5 rounded-xl bg-[#18181B] border border-[#27272A]">
-          <h3 className="text-lg font-semibold text-[#FAFAFA] mb-3">自我评价</h3>
-          <p className="text-sm text-[#D4D4D8]">{content.self_evaluation}</p>
+        <div className="py-6 border-t border-[#3F3F46]">
+          <p className="text-xs text-[#52525B] tracking-wider mb-4">自我评价</p>
+          <p className="text-sm text-[#A1A1AA] leading-relaxed">{content.self_evaluation}</p>
         </div>
       )}
     </div>

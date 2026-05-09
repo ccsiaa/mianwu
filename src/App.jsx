@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { Layout } from "@/components/layout/Layout";
+import { AuroraBackground } from "@/components/ui/AuroraBackground";
 import { navItems } from "./nav-items";
 
 const queryClient = new QueryClient();
@@ -13,6 +14,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <AuthProvider>
+        <AuroraBackground />
         <HashRouter>
           <Layout>
             <Routes>

@@ -8,8 +8,20 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    const status = error?.response?.status;
     const data = error?.response?.data;
-    const message = data?.message || error.message || "请求失败";
+
+    // 401 未认证，清除token并跳转登录页
+    if (status === 401) {
+      localStorage.removeItem('mianwu_token');
+      // 如果不在登录/注册页，跳转到登录页
+      if (!window.location.hash.includes('/login') && !window.location.hash.includes('/register')) {
+        window.location.href = '/#/login';
+      }
+      return Promise.reject(new Error("请先登录"));
+    }
+
+    const message = data?.message || data?.detail || error.message || "请求失败";
     return Promise.reject(new Error(message));
   }
 );
@@ -76,7 +88,9 @@ export const transcribeAudio = (formData) => api.post("/speech/transcribe", form
 export const parseJD = (payload) => api.post("/resume/parse-jd", payload, { timeout: 300000 });
 export const matchExperiences = (payload) => api.post("/resume/match", payload, { timeout: 300000 });
 export const generateResume = (payload) => api.post("/resume/generate", payload, { timeout: 300000 });
+export const generatePrepPlan = (payload) => api.post("/interview/prep-plan", payload, { timeout: 300000 });
 export const analyzeInterview = (payload) => api.post("/interview/analyze", payload, { timeout: 300000 });
+export const chatInterview = (payload) => api.post("/interview/chat", payload, { timeout: 300000 });
 export const saveReview = (payload) => api.post("/review/save", payload, { timeout: 60000 });
 export const listReviews = (params = {}) => api.get("/review", { params });
 export const submitReview = (payload) => api.post("/review/submit-text", payload);
