@@ -240,6 +240,7 @@ const InterviewReview = () => {
       .map(q => ({
         question: q.question, answer: q.answer, category: q.category,
         level: q.level, analysis: q.analysis, improvement: q.improvement,
+        source_text: q.source_text,
       }));
     if (!questionsToSave.length) { setError('请至少选择一道题目'); return; }
     setSaving(true);
@@ -278,6 +279,7 @@ const InterviewReview = () => {
         score: q.performance === 'good' ? 4 : q.performance === 'poor' ? 2 : 3,
         analysis: q.feedback,
         improvement: q.improvement,
+        source_text: q.source_text,
       }));
       setResult({ summary: data.summary || '历史复盘记录', total_questions: questions.length, questions, strengths: [], weaknesses: [], recommendations: [] });
       setView('report');
@@ -648,12 +650,9 @@ const InterviewReview = () => {
 
               {showOriginalInModal ? (
                 <div className="flex-1 overflow-y-auto min-h-0">
-                  <p className="text-xs text-[#52525B] mb-4">以下是完整的面试转写文本：</p>
+                  <p className="text-xs text-[#52525B] mb-4">该问题的原始回答：</p>
                   <div className="text-sm text-[#A1A1AA] whitespace-pre-wrap leading-relaxed">
-                    {speakers?.length > 0
-                      ? speakers.map((item, idx) => `[${item.speaker === '0' ? '面试官' : '候选人'}]: ${item.text}`).join('\n\n')
-                      : (transcribedText || content)
-                    }
+                    {selectedQuestion.source_text || '暂无原文'}
                   </div>
                 </div>
               ) : (

@@ -74,6 +74,7 @@ class InterviewQuestion(Base):
     question = Column(Text)
     category = Column(Enum(QuestionCategory))
     answer = Column(Text)  # 用户回答
+    source_text = Column(Text)  # 原始回答片段（去语气词）
     performance = Column(Enum(QuestionPerformance))
     feedback = Column(Text)  # AI反馈
     created_at = Column(DateTime, server_default=func.now())
@@ -87,6 +88,7 @@ class InterviewQuestion(Base):
             "question": self.question,
             "category": self.category.value if self.category else None,
             "answer": self.answer,
+            "source_text": self.source_text,
             "performance": self.performance.value if self.performance else None,
             "feedback": self.feedback,
         }

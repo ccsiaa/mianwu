@@ -296,6 +296,7 @@ async def save_review(
             question=q.get("question"),
             category=category,
             answer=q.get("answer"),
+            source_text=q.get("source_text"),
             performance=performance,
             feedback=q.get("analysis") or q.get("improvement"),
         )
