@@ -55,6 +55,7 @@ const InterviewReview = () => {
   const [editingReview, setEditingReview] = useState(null);
   const [editCompany, setEditCompany] = useState('');
   const [editPosition, setEditPosition] = useState('');
+  const [editRound, setEditRound] = useState('');
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
 
@@ -81,12 +82,13 @@ const InterviewReview = () => {
     setEditingReview(r.id);
     setEditCompany(r.company || '');
     setEditPosition(r.position || '');
+    setEditRound(r.round || '');
   };
 
   const handleSaveEdit = async () => {
     if (!editCompany.trim() || !editPosition.trim()) return;
     try {
-      await updateReview(editingReview, { company: editCompany, position: editPosition });
+      await updateReview(editingReview, { company: editCompany, position: editPosition, round: editRound });
       setEditingReview(null);
       queryClient.invalidateQueries(['reviews']);
     } catch (err) {
@@ -345,6 +347,12 @@ const InterviewReview = () => {
                                   placeholder="岗位"
                                   className="h-10 bg-transparent border-[#3F3F46] text-[#FAFAFA] placeholder:text-[#3F3F46] focus:border-[#52525B] rounded-none text-sm"
                                 />
+                                <Input
+                                  value={editRound}
+                                  onChange={(e) => setEditRound(e.target.value)}
+                                  placeholder="轮次"
+                                  className="h-10 bg-transparent border-[#3F3F46] text-[#FAFAFA] placeholder:text-[#3F3F46] focus:border-[#52525B] rounded-none text-sm"
+                                />
                               </div>
                               <div className="flex gap-2">
                                 <button onClick={handleSaveEdit} className="text-xs text-[#10B981] hover:text-[#34D399] transition-colors">保存</button>
@@ -358,7 +366,7 @@ const InterviewReview = () => {
                             >
                               <div className="flex items-center justify-between">
                                 <div>
-                                  <p className="text-[#FAFAFA] group-hover:text-[#A1A1AA] transition-colors">{r.company} · {r.position}</p>
+                                  <p className="text-[#FAFAFA] group-hover:text-[#A1A1AA] transition-colors">{r.company} · {r.position}{r.round ? ` · ${r.round}` : ''}</p>
                                   <p className="text-xs text-[#52525B] mt-1">{r.date ? new Date(r.date).toLocaleDateString() : ''}</p>
                                 </div>
                                 <div className="flex items-center gap-3">
