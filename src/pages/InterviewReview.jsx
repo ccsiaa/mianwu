@@ -494,7 +494,7 @@ const InterviewReview = () => {
             <div className="py-8 border-t border-[#3F3F46]">
               <div className="flex items-center justify-between mb-6">
                 <p className="text-xs text-[#52525B] tracking-wider">问题详情</p>
-                {!viewingHistoryId && result?.questions?.length > 0 && (
+                {result?.questions?.length > 0 && (
                   <button onClick={toggleSelectAll} className="text-xs text-[#71717A] hover:text-[#FAFAFA] transition-colors">
                     {filteredQuestions.every(([idx]) => selectedQuestions.has(idx)) ? '取消全选' : '全选'}
                   </button>
@@ -534,16 +534,14 @@ const InterviewReview = () => {
                     return (
                       <div key={idx} className="flex items-start gap-3 py-4 border-t border-[#3F3F46]">
                         {/* 复选框 */}
-                        {!viewingHistoryId && (
-                          <button
-                            onClick={() => toggleQuestion(idx)}
-                            className={`mt-0.5 w-5 h-5 flex-shrink-0 border rounded flex items-center justify-center transition-colors ${
-                              isSelected ? 'bg-[#FAFAFA] border-[#FAFAFA]' : 'border-[#52525B] hover:border-[#71717A]'
-                            }`}
-                          >
-                            {isSelected && <Check size={12} className="text-black" />}
-                          </button>
-                        )}
+                        <button
+                          onClick={() => toggleQuestion(idx)}
+                          className={`mt-0.5 w-5 h-5 flex-shrink-0 border rounded flex items-center justify-center transition-colors ${
+                            isSelected ? 'bg-[#FAFAFA] border-[#FAFAFA]' : 'border-[#52525B] hover:border-[#71717A]'
+                          }`}
+                        >
+                          {isSelected && <Check size={12} className="text-black" />}
+                        </button>
                         {/* 题目内容 */}
                         <button
                           onClick={() => setSelectedQuestion(q)}
@@ -576,9 +574,9 @@ const InterviewReview = () => {
             </div>
 
             {/* 保存 */}
-            {!viewingHistoryId && result?.questions?.length > 0 && (
+            {result?.questions?.length > 0 && (
               <div className="py-8 border-t border-[#3F3F46]">
-                {saved ? (
+                {saved && !viewingHistoryId ? (
                   <p className="text-sm text-[#10B981]">已保存到知识库</p>
                 ) : (
                   <div className="flex items-center gap-4">
