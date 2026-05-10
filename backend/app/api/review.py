@@ -44,6 +44,7 @@ class ReviewAnalyzeRequest(BaseModel):
 
 class ReviewSaveRequest(BaseModel):
     """保存复盘请求"""
+    review_id: Optional[str] = None  # 如果提供则更新已有记录，否则创建新记录
     company: str
     position: str
     round: str = "技术面试"
@@ -270,108 +271,6 @@ async def list_reviews(
     }
 
 
-@router.get("/{id}")
-async def get_review(
-    id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """获取复盘详情 - 仅返回当前用户的记录"""
-    result = await db.execute(
-        select(InterviewRecord).where(
-            InterviewRecord.id == id,
-            InterviewRecord.user_id == current_user.id
-        )
-    )
-    record = result.scalar_one_or_none()
-
-    if not record:
-        return {"code": 40002, "message": "记录不存在或无权访问"}
-
-    # 获取关联问题
-    q_result = await db.execute(
-        select(InterviewQuestion).where(InterviewQuestion.record_id == id)
-    )
-    questions = q_result.scalars().all()
-
-    return {
-        "code": 0,
-        "data": {
-            **record.to_dict(),
-            "questions": [q.to_dict() for q in questions],
-        }
-    }
-
-
-class ReviewUpdateRequest(BaseModel):
-    """更新复盘请求"""
-    company: Optional[str] = None
-    position: Optional[str] = None
-    round: Optional[str] = None
-
-
-@router.delete("/{id}")
-async def delete_review(
-    id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """删除复盘记录及其关联问题"""
-    result = await db.execute(
-        select(InterviewRecord).where(
-            InterviewRecord.id == id,
-            InterviewRecord.user_id == current_user.id
-        )
-    )
-    record = result.scalar_one_or_none()
-
-    if not record:
-        raise HTTPException(status_code=404, detail="记录不存在或无权访问")
-
-    # 删除关联问题
-    await db.execute(
-        sql_delete(InterviewQuestion).where(InterviewQuestion.record_id == id)
-    )
-
-    # 删除记录
-    await db.delete(record)
-    await db.commit()
-
-    return {"code": 0, "data": {"deleted": True}}
-
-
-@router.patch("/{id}")
-async def update_review(
-    id: str,
-    data: ReviewUpdateRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """更新复盘记录（公司、岗位、轮次）"""
-    result = await db.execute(
-        select(InterviewRecord).where(
-            InterviewRecord.id == id,
-            InterviewRecord.user_id == current_user.id
-        )
-    )
-    record = result.scalar_one_or_none()
-
-    if not record:
-        raise HTTPException(status_code=404, detail="记录不存在或无权访问")
-
-    if data.company is not None:
-        record.company = data.company
-    if data.position is not None:
-        record.position = data.position
-    if data.round is not None:
-        record.round = data.round
-
-    await db.commit()
-    await db.refresh(record)
-
-    return {"code": 0, "data": record.to_dict()}
-
-
 @router.post("/save")
 async def save_review(
     data: ReviewSaveRequest,
@@ -385,19 +284,45 @@ async def save_review(
 
     user_id = current_user.id
 
-    # 创建面试记录
-    record = InterviewRecord(
-        user_id=user_id,
-        company=data.company,
-        position=data.position,
-        round=data.round,
-        date=datetime.strptime(data.date, "%Y-%m-%d") if data.date else None,
-        result=InterviewResult(data.result),
-        summary=data.summary,
-        transcribed_text=data.transcribed_text,
-    )
+    # 如果提供了 review_id，更新已有记录；否则创建新记录
+    if data.review_id:
+        result = await db.execute(
+            select(InterviewRecord).where(
+                InterviewRecord.id == data.review_id,
+                InterviewRecord.user_id == user_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if not record:
+            raise HTTPException(status_code=404, detail="记录不存在或无权访问")
+        # 更新记录字段
+        record.company = data.company
+        record.position = data.position
+        record.round = data.round
+        if data.date:
+            record.date = datetime.strptime(data.date, "%Y-%m-%d")
+        if data.summary:
+            record.summary = data.summary
+        if data.transcribed_text:
+            record.transcribed_text = data.transcribed_text
+        # 删除已有问题（重新保存）
+        await db.execute(
+            sql_delete(InterviewQuestion).where(InterviewQuestion.record_id == record.id)
+        )
+    else:
+        # 创建新记录
+        record = InterviewRecord(
+            user_id=user_id,
+            company=data.company,
+            position=data.position,
+            round=data.round,
+            date=datetime.strptime(data.date, "%Y-%m-%d") if data.date else None,
+            result=InterviewResult(data.result),
+            summary=data.summary,
+            transcribed_text=data.transcribed_text,
+        )
+        db.add(record)
 
-    db.add(record)
     await db.commit()
     await db.refresh(record)
 
@@ -565,3 +490,105 @@ async def save_review(
             "savedQuestions": len(saved_questions),
         }
     }
+
+
+@router.get("/{id}")
+async def get_review(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取复盘详情 - 仅返回当前用户的记录"""
+    result = await db.execute(
+        select(InterviewRecord).where(
+            InterviewRecord.id == id,
+            InterviewRecord.user_id == current_user.id
+        )
+    )
+    record = result.scalar_one_or_none()
+
+    if not record:
+        return {"code": 40002, "message": "记录不存在或无权访问"}
+
+    # 获取关联问题
+    q_result = await db.execute(
+        select(InterviewQuestion).where(InterviewQuestion.record_id == id)
+    )
+    questions = q_result.scalars().all()
+
+    return {
+        "code": 0,
+        "data": {
+            **record.to_dict(),
+            "questions": [q.to_dict() for q in questions],
+        }
+    }
+
+
+class ReviewUpdateRequest(BaseModel):
+    """更新复盘请求"""
+    company: Optional[str] = None
+    position: Optional[str] = None
+    round: Optional[str] = None
+
+
+@router.delete("/{id}")
+async def delete_review(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除复盘记录及其关联问题"""
+    result = await db.execute(
+        select(InterviewRecord).where(
+            InterviewRecord.id == id,
+            InterviewRecord.user_id == current_user.id
+        )
+    )
+    record = result.scalar_one_or_none()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="记录不存在或无权访问")
+
+    # 删除关联问题
+    await db.execute(
+        sql_delete(InterviewQuestion).where(InterviewQuestion.record_id == id)
+    )
+
+    # 删除记录
+    await db.delete(record)
+    await db.commit()
+
+    return {"code": 0, "data": {"deleted": True}}
+
+
+@router.patch("/{id}")
+async def update_review(
+    id: str,
+    data: ReviewUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新复盘记录（公司、岗位、轮次）"""
+    result = await db.execute(
+        select(InterviewRecord).where(
+            InterviewRecord.id == id,
+            InterviewRecord.user_id == current_user.id
+        )
+    )
+    record = result.scalar_one_or_none()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="记录不存在或无权访问")
+
+    if data.company is not None:
+        record.company = data.company
+    if data.position is not None:
+        record.position = data.position
+    if data.round is not None:
+        record.round = data.round
+
+    await db.commit()
+    await db.refresh(record)
+
+    return {"code": 0, "data": record.to_dict()}

@@ -39,6 +39,7 @@ const InterviewReview = () => {
   const [speakers, setSpeakers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savedReviewId, setSavedReviewId] = useState(null);
   const [savingQuestions, setSavingQuestions] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -256,11 +257,13 @@ const InterviewReview = () => {
 
   const autoSave = async (analyzeResult, originalText) => {
     try {
-      await saveReviewRecord({
+      const res = await saveReviewRecord({
         company, position, round: round || '技术面试',
         summary: analyzeResult?.summary,
         transcribed_text: originalText,
       });
+      const reviewId = res?.data?.reviewId;
+      setSavedReviewId(reviewId);
       setSaved(true);
       queryClient.refetchQueries({ queryKey: ['reviews'] });
     } catch (err) {
@@ -298,11 +301,13 @@ const InterviewReview = () => {
     setSavingQuestions(true);
     try {
       await saveReview({
+        review_id: savedReviewId,
         company, position, round: round || '技术面试',
         summary: result?.summary,
         questions: questionsToSave,
         transcribed_text: transcribedText || content,
       });
+      queryClient.refetchQueries({ queryKey: ['reviews'] });
       queryClient.refetchQueries({ queryKey: ['experiences'] });
       setError('');
       alert('已沉淀到知识库');
@@ -349,7 +354,9 @@ const InterviewReview = () => {
     setCompany(''); setPosition(''); setRound(''); setContent('');
     setTranscribedText(''); setSpeakers([]); setError(''); setResult(null);
     setSelectedFile(null); setShowTranscript(false); setSaved(false);
-    setViewingHistoryId(null); setSelectedQuestions(new Set()); setCategoryFilter('all');
+    setSavedReviewId(null); setViewingHistoryId(null);
+    setSelectedQuestions(new Set()); setCategoryFilter('all');
+    setQuestionExperiences({});
     setView('list');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
