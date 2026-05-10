@@ -6,7 +6,7 @@ import { Mic, FileText, MessageSquare, X, Upload, Check, ChevronDown } from 'luc
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { listReviews, analyzeInterview, transcribeAudio, saveReview, saveReviewRecord, matchExperiences, deleteReview, updateReview, getExperiences } from '@/lib/api';
+import { listReviews, analyzeInterview, transcribeAudio, saveReview, saveReviewRecord, matchQuestionExperiences, deleteReview, updateReview, getExperiences } from '@/lib/api';
 import api from '@/lib/api';
 
 const CATEGORY_MAP = {
@@ -271,7 +271,7 @@ const InterviewReview = () => {
   const autoMatchExperiences = async (questions) => {
     if (!questions?.length || !experiences.length) return;
     try {
-      const res = await matchExperiences({ questions });
+      const res = await matchQuestionExperiences({ questions });
       const matches = res?.data?.matches || {};
       const mapping = {};
       questions.forEach((q, idx) => {
