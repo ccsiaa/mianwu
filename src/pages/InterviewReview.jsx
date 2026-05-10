@@ -52,6 +52,18 @@ const InterviewReview = () => {
   const [selectedQuestions, setSelectedQuestions] = useState(new Set());
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showOriginalInModal, setShowOriginalInModal] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+
+  const handleChangeCategory = (newCategory) => {
+    setResult(prev => ({
+      ...prev,
+      questions: prev.questions.map(q =>
+        q === selectedQuestion ? { ...q, category: newCategory } : q
+      ),
+    }));
+    setSelectedQuestion(prev => ({ ...prev, category: newCategory }));
+    setShowCategoryPicker(false);
+  };
   const [editingReview, setEditingReview] = useState(null);
   const [editCompany, setEditCompany] = useState('');
   const [editPosition, setEditPosition] = useState('');
@@ -647,15 +659,31 @@ const InterviewReview = () => {
                 <div className="flex-1 overflow-y-auto min-h-0">
                   <p className="text-[#FAFAFA] mb-4">{selectedQuestion.question}</p>
 
-                  <div className="flex gap-3 mb-6">
+                  <div className="flex gap-3 mb-6 items-center">
                     <span className={`text-xs px-3 py-1 rounded ${selectedQuestion.level === 'good' ? 'bg-[#10B981]/10 text-[#10B981]' : selectedQuestion.level === 'bad' ? 'bg-[#EF4444]/10 text-[#EF4444]' : 'bg-[#F59E0B]/10 text-[#F59E0B]'}`}>
                       {selectedQuestion.level === 'good' ? '良好' : selectedQuestion.level === 'bad' ? '待改进' : '一般'}
                     </span>
-                    {CATEGORY_MAP[selectedQuestion.category] && (
-                      <span className={`text-xs px-3 py-1 rounded ${CATEGORY_MAP[selectedQuestion.category].bg} ${CATEGORY_MAP[selectedQuestion.category].color}`}>
-                        {CATEGORY_MAP[selectedQuestion.category].label}
-                      </span>
-                    )}
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowCategoryPicker(!showCategoryPicker)}
+                        className={`text-xs px-3 py-1 rounded cursor-pointer hover:opacity-80 transition-opacity ${CATEGORY_MAP[selectedQuestion.category]?.bg || 'bg-[#3F3F46]/30'} ${CATEGORY_MAP[selectedQuestion.category]?.color || 'text-[#71717A]'}`}
+                      >
+                        {CATEGORY_MAP[selectedQuestion.category]?.label || selectedQuestion.category || '未分类'} ▾
+                      </button>
+                      {showCategoryPicker && (
+                        <div className="absolute top-full left-0 mt-1 bg-[#18181B] border border-[#3F3F46] rounded py-1 z-10 min-w-[100px]">
+                          {Object.entries(CATEGORY_MAP).map(([key, val]) => (
+                            <button
+                              key={key}
+                              onClick={() => handleChangeCategory(key)}
+                              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#27272A] transition-colors ${val.color} ${selectedQuestion.category === key ? 'bg-[#27272A]' : ''}`}
+                            >
+                              {val.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {selectedQuestion.answer && (
