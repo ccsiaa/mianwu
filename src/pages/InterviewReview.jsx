@@ -269,7 +269,7 @@ const InterviewReview = () => {
   };
 
   const autoMatchExperiences = async (questions) => {
-    if (!questions?.length || !experiences.length) return;
+    if (!questions?.length) return;
     try {
       const res = await matchQuestionExperiences({ questions });
       const matches = res?.data?.matches || {};
@@ -278,7 +278,7 @@ const InterviewReview = () => {
         const expId = matches[String(idx)];
         if (expId) mapping[q.question] = expId;
       });
-      setQuestionExperiences(prev => ({ ...mapping, ...prev }));
+      setQuestionExperiences(mapping);
     } catch (err) {
       console.error('自动匹配经历失败:', err);
     }
