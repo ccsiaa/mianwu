@@ -6,7 +6,7 @@ import { Mic, FileText, MessageSquare, X, Upload, Check, ChevronDown } from 'luc
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { listReviews, analyzeInterview, transcribeAudio, saveReview, saveReviewRecord, matchQuestionExperiences, deleteReview, updateReview, getExperiences } from '@/lib/api';
+import { listReviews, analyzeInterview, transcribeAudio, saveReview, matchQuestionExperiences, deleteReview, updateReview, getExperiences } from '@/lib/api';
 import api from '@/lib/api';
 
 const CATEGORY_MAP = {
@@ -259,13 +259,18 @@ const InterviewReview = () => {
 
   const autoSave = async (analyzeResult, originalText) => {
     try {
-      const res = await saveReviewRecord({
+      const questionsToSave = (analyzeResult?.questions || []).map(q => ({
+        question: q.question, answer: q.answer, category: q.category,
+        level: q.level, analysis: q.analysis, improvement: q.improvement,
+        source_text: q.source_text,
+      }));
+      const res = await saveReview({
         company, position, round: round || '技术面试',
         summary: analyzeResult?.summary,
+        questions: questionsToSave,
         transcribed_text: originalText,
       });
-      const reviewId = res?.data?.reviewId;
-      setSavedReviewId(reviewId);
+      setSavedReviewId(res?.data?.reviewId);
       setSaved(true);
       await queryClient.refetchQueries({ queryKey: ['reviews'] });
     } catch (err) {
