@@ -225,14 +225,13 @@ const InterviewReview = () => {
         setResult(analyzeRes.data);
         setSelectedQuestions(new Set(analyzeRes.data.questions?.map((_, i) => i) || []));
         setView('report');
-        // 自动保存到最近复盘
-        await autoSave(analyzeRes.data, transcribedContent);
-        // 自动匹配经历
-        await autoMatchExperiences(analyzeRes.data.questions);
+        setLoading(false);
+        // 后台保存和匹配（不阻塞UI）
+        autoSave(analyzeRes.data, transcribedContent);
+        autoMatchExperiences(analyzeRes.data.questions);
+        return;
       } catch (err) {
         setError(err.message || '分析失败，请稍后重试');
-      } finally {
-        setLoading(false);
       }
     } else {
       if (!company.trim() || !position.trim() || !content.trim()) { setError('请填写完整信息'); return; }
@@ -243,16 +242,16 @@ const InterviewReview = () => {
         setResult(res.data);
         setSelectedQuestions(new Set(res.data.questions?.map((_, i) => i) || []));
         setView('report');
-        // 自动保存到最近复盘
-        await autoSave(res.data, content);
-        // 自动匹配经历
-        await autoMatchExperiences(res.data.questions);
+        setLoading(false);
+        // 后台保存和匹配（不阻塞UI）
+        autoSave(res.data, content);
+        autoMatchExperiences(res.data.questions);
+        return;
       } catch (err) {
         setError(err.message || '分析失败，请稍后重试');
-      } finally {
-        setLoading(false);
       }
     }
+    setLoading(false);
   };
 
   const autoSave = async (analyzeResult, originalText) => {
