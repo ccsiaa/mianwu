@@ -38,7 +38,6 @@ const InterviewReview = () => {
   const [transcribedText, setTranscribedText] = useState('');
   const [speakers, setSpeakers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -214,7 +213,10 @@ const InterviewReview = () => {
           speakers: transcribeData?.speakers || [],
         });
         setResult(analyzeRes.data);
+        setSelectedQuestions(new Set(analyzeRes.data.questions?.map((_, i) => i) || []));
         setView('report');
+        // 自动保存到最近复盘
+        await autoSave(analyzeRes.data, transcribedContent);
       } catch (err) {
         setError(err.message || '分析失败，请稍后重试');
       } finally {
@@ -227,7 +229,10 @@ const InterviewReview = () => {
       try {
         const res = await analyzeInterview({ company, position, round: round || '技术面试', content });
         setResult(res.data);
+        setSelectedQuestions(new Set(res.data.questions?.map((_, i) => i) || []));
         setView('report');
+        // 自动保存到最近复盘
+        await autoSave(res.data, content);
       } catch (err) {
         setError(err.message || '分析失败，请稍后重试');
       } finally {
@@ -236,33 +241,25 @@ const InterviewReview = () => {
     }
   };
 
-  const handleSave = async () => {
-    const questionsToSave = result.questions
-      .filter((_, idx) => selectedQuestions.has(idx))
-      .map(q => ({
+  const autoSave = async (analyzeResult, originalText) => {
+    if (!analyzeResult?.questions?.length) return;
+    try {
+      const questionsToSave = analyzeResult.questions.map(q => ({
         question: q.question, answer: q.answer, category: q.category,
         level: q.level, analysis: q.analysis, improvement: q.improvement,
         source_text: q.source_text,
       }));
-    if (!questionsToSave.length) { setError('请至少选择一道题目'); return; }
-    setSaving(true);
-    try {
-      const res = await saveReview({
+      await saveReview({
         company, position, round: round || '技术面试',
-        summary: result?.summary,
+        summary: analyzeResult.summary,
         questions: questionsToSave,
-        transcribed_text: transcribedText || content,
+        transcribed_text: originalText,
       });
       setSaved(true);
-      if (res?.data?.warning) {
-        setError(res.data.warning);
-      }
-      await queryClient.refetchQueries({ queryKey: ['reviews'] });
-      await queryClient.refetchQueries({ queryKey: ['experiences'] });
+      queryClient.refetchQueries({ queryKey: ['reviews'] });
+      queryClient.refetchQueries({ queryKey: ['experiences'] });
     } catch (err) {
-      setError('保存失败');
-    } finally {
-      setSaving(false);
+      console.error('自动保存失败:', err);
     }
   };
 
@@ -595,21 +592,24 @@ const InterviewReview = () => {
               )}
             </div>
 
-            {/* 保存 */}
+            {/* 保存状态 */}
             {result?.questions?.length > 0 && (
               <div className="py-8 border-t border-[#3F3F46]">
-                {saved && !viewingHistoryId ? (
-                  <p className="text-sm text-[#10B981]">已保存到知识库</p>
-                ) : (
+                {saved ? (
                   <div className="flex items-center gap-4">
+                    <p className="text-sm text-[#10B981]">已保存到最近复盘</p>
                     <Button
-                      onClick={handleSave}
-                      disabled={saving || selectedQuestions.size === 0}
-                      className="h-12 bg-white text-black hover:bg-[#E5E5E5] border-0 text-sm font-medium transition-all duration-300"
+                      onClick={() => { setView('list'); resetUpload(); }}
+                      variant="outline"
+                      className="h-10 border-[#3F3F46] text-[#71717A] hover:text-[#FAFAFA] hover:bg-transparent text-xs"
                     >
-                      {saving ? '保存中...' : `保存选中题目 (${selectedQuestions.size}/${result.questions.length})`}
+                      返回列表
                     </Button>
                   </div>
+                ) : viewingHistoryId ? (
+                  <p className="text-sm text-[#52525B]">历史复盘记录</p>
+                ) : (
+                  <p className="text-sm text-[#52525B]">保存中...</p>
                 )}
               </div>
             )}
