@@ -211,7 +211,7 @@ const KnowledgeBase = () => {
   });
 
   const allExperiences = allData?.list || [];
-  const totalQuestions = allExperiences.reduce((sum, exp) => sum + (exp.questionCount || 0), 0);
+  const totalQuestions = allExperiences.reduce((sum, exp) => sum + (exp.interviewCount || 0), 0);
   const internshipCount = allExperiences.filter((e) => e.type === 'internship').length;
   const projectCount = allExperiences.filter((e) => e.type === 'project').length;
 

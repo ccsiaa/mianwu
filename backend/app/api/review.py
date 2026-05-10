@@ -8,6 +8,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 import json
+import asyncio
 
 from app.core.database import get_db
 from app.models.interview import (
@@ -359,7 +360,9 @@ async def save_review(
 只返回JSON，不要其他解释。"""
 
         try:
-            match_result = llm_service.chat([{"role": "user", "content": prompt}])
+            match_result = await asyncio.to_thread(
+                llm_service.chat, [{"role": "user", "content": prompt}]
+            )
             match_data = json.loads(match_result)
             matches = match_data.get("matches", [])
 
@@ -397,6 +400,14 @@ async def save_review(
 
         except Exception as e:
             print(f"匹配问题到经历失败: {e}")
+            return {
+                "code": 0,
+                "data": {
+                    "reviewId": record.id,
+                    "savedQuestions": len(saved_questions),
+                    "warning": f"题目已保存，但自动关联经历失败：{str(e)}",
+                }
+            }
 
     return {
         "code": 0,

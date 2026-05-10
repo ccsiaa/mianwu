@@ -245,13 +245,18 @@ const InterviewReview = () => {
     if (!questionsToSave.length) { setError('请至少选择一道题目'); return; }
     setSaving(true);
     try {
-      await saveReview({
+      const res = await saveReview({
         company, position, round: round || '技术面试',
         summary: result?.summary,
         questions: questionsToSave,
         transcribed_text: transcribedText || content,
       });
       setSaved(true);
+      if (res?.data?.warning) {
+        setError(res.data.warning);
+      }
+      queryClient.invalidateQueries({ queryKey: ['reviews'] });
+      queryClient.invalidateQueries({ queryKey: ['experiences'] });
     } catch (err) {
       setError('保存失败');
     } finally {
