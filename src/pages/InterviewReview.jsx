@@ -6,7 +6,7 @@ import { Mic, FileText, MessageSquare, X, Upload, Check, ChevronDown } from 'luc
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { listReviews, analyzeInterview, transcribeAudio, saveReview, saveReviewRecord, deleteReview, updateReview, getExperiences } from '@/lib/api';
+import { listReviews, analyzeInterview, transcribeAudio, saveReview, saveReviewRecord, matchExperiences, deleteReview, updateReview, getExperiences } from '@/lib/api';
 import api from '@/lib/api';
 
 const CATEGORY_MAP = {
@@ -227,6 +227,8 @@ const InterviewReview = () => {
         setView('report');
         // 自动保存到最近复盘
         await autoSave(analyzeRes.data, transcribedContent);
+        // 自动匹配经历
+        await autoMatchExperiences(analyzeRes.data.questions);
       } catch (err) {
         setError(err.message || '分析失败，请稍后重试');
       } finally {
@@ -243,6 +245,8 @@ const InterviewReview = () => {
         setView('report');
         // 自动保存到最近复盘
         await autoSave(res.data, content);
+        // 自动匹配经历
+        await autoMatchExperiences(res.data.questions);
       } catch (err) {
         setError(err.message || '分析失败，请稍后重试');
       } finally {
@@ -262,6 +266,22 @@ const InterviewReview = () => {
       queryClient.refetchQueries({ queryKey: ['reviews'] });
     } catch (err) {
       console.error('自动保存失败:', err);
+    }
+  };
+
+  const autoMatchExperiences = async (questions) => {
+    if (!questions?.length || !experiences.length) return;
+    try {
+      const res = await matchExperiences({ questions });
+      const matches = res?.data?.matches || {};
+      const mapping = {};
+      questions.forEach((q, idx) => {
+        const expId = matches[String(idx)];
+        if (expId) mapping[q.question] = expId;
+      });
+      setQuestionExperiences(prev => ({ ...mapping, ...prev }));
+    } catch (err) {
+      console.error('自动匹配经历失败:', err);
     }
   };
 

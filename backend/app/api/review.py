@@ -147,6 +147,93 @@ async def save_review_record(
     }
 
 
+class MatchExperiencesRequest(BaseModel):
+    """匹配经历请求"""
+    questions: List[dict]
+
+
+@router.post("/match-experiences")
+async def match_experiences(
+    data: MatchExperiencesRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """匹配问题到经历（不保存）- 用于预填关联经历"""
+    from app.models.experience import Experience
+    from app.services.llm_service import llm_service
+
+    user_id = current_user.id
+
+    result = await db.execute(
+        select(Experience).where(Experience.user_id == user_id)
+    )
+    experiences = result.scalars().all()
+
+    if not experiences:
+        return {"code": 0, "data": {"matches": {}}}
+
+    exp_list = [
+        {
+            "id": exp.id,
+            "type": exp.type.value if exp.type else "other",
+            "company": exp.company,
+            "role": exp.role,
+            "description": exp.description or "",
+        }
+        for exp in experiences
+    ]
+
+    questions_data = [
+        {"index": i, "question": q.get("question", ""), "category": q.get("category", "")}
+        for i, q in enumerate(data.questions)
+    ]
+
+    prompt = f"""请将以下面试问题匹配到最相关的经历。
+
+经历列表：
+{json.dumps(exp_list, ensure_ascii=False, indent=2)}
+
+面试问题：
+{json.dumps(questions_data, ensure_ascii=False, indent=2)}
+
+请返回JSON格式的匹配结果，格式如下：
+{{
+  "matches": [
+    {{
+      "questionIndex": 0,
+      "experienceId": "经历ID，如果没有匹配则为null"
+    }}
+  ]
+}}
+
+注意：
+1. 只有项目经验(project)和实习(internship)类型的问题才需要匹配
+2. 基础知识、算法、行为面试问题不需要匹配
+3. 一个问题最多匹配一个经历
+
+只返回JSON，不要其他解释。"""
+
+    try:
+        match_result = await asyncio.to_thread(
+            llm_service.chat, [{"role": "user", "content": prompt}]
+        )
+        match_data = json.loads(match_result)
+        matches = match_data.get("matches", [])
+
+        # 转换为 question_index -> experience_id 的映射
+        result_map = {}
+        for m in matches:
+            q_idx = m.get("questionIndex")
+            exp_id = m.get("experienceId")
+            if q_idx is not None and exp_id:
+                result_map[str(q_idx)] = exp_id
+
+        return {"code": 0, "data": {"matches": result_map}}
+    except Exception as e:
+        print(f"匹配经历失败: {e}")
+        return {"code": 0, "data": {"matches": {}}}
+
+
 @router.post("/analyze")
 async def analyze_review(data: ReviewAnalyzeRequest):
     """分析面试内容 - 不涉及用户数据存储"""
