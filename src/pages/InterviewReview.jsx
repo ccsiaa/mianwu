@@ -75,6 +75,8 @@ const InterviewReview = () => {
     queryKey: ['reviews'],
     queryFn: () => listReviews().then((res) => res.data),
     enabled: isLoggedIn,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
   const reviews = isLoggedIn ? (data?.list || []) : [];
 
@@ -255,8 +257,8 @@ const InterviewReview = () => {
       if (res?.data?.warning) {
         setError(res.data.warning);
       }
-      queryClient.invalidateQueries({ queryKey: ['reviews'] });
-      queryClient.invalidateQueries({ queryKey: ['experiences'] });
+      await queryClient.refetchQueries({ queryKey: ['reviews'] });
+      await queryClient.refetchQueries({ queryKey: ['experiences'] });
     } catch (err) {
       setError('保存失败');
     } finally {
