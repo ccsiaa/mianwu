@@ -266,6 +266,7 @@ const InterviewReview = () => {
       setCompany(data.company || '');
       setPosition(data.position || '');
       setRound(data.round || '');
+      setTranscribedText(data.transcribed_text || '');
       setViewingHistoryId(reviewId);
       setSaved(true);
       const questions = (data.questions || []).map((q, idx) => ({

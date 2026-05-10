@@ -29,6 +29,7 @@ class InterviewRecord(Base):
     result = Column(Enum(InterviewResult), default=InterviewResult.PENDING)
     duration = Column(Integer, default=0)  # 时长（分钟）
     summary = Column(Text)  # 总结
+    transcribed_text = Column(Text)  # 原始转写文本
     created_at = Column(DateTime, server_default=func.now())
 
     # 关联问题
@@ -44,6 +45,7 @@ class InterviewRecord(Base):
             "result": self.result.value if self.result else None,
             "duration": self.duration,
             "summary": self.summary,
+            "transcribed_text": self.transcribed_text,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
         }
 

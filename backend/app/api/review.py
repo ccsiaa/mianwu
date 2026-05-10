@@ -262,6 +262,7 @@ async def save_review(
         date=datetime.strptime(data.date, "%Y-%m-%d") if data.date else None,
         result=InterviewResult(data.result),
         summary=data.summary,
+        transcribed_text=data.transcribed_text,
     )
 
     db.add(record)
