@@ -226,9 +226,10 @@ const InterviewReview = () => {
         setResult(analyzeRes.data);
         setSelectedQuestions(new Set(analyzeRes.data.questions?.map((_, i) => i) || []));
         setView('report');
+        // 保存到最近复盘
+        await autoSave(analyzeRes.data, transcribedContent);
         setLoading(false);
-        // 后台保存和匹配（不阻塞UI）
-        autoSave(analyzeRes.data, transcribedContent);
+        // 后台匹配经历（不阻塞）
         autoMatchExperiences(analyzeRes.data.questions);
         return;
       } catch (err) {
@@ -243,9 +244,10 @@ const InterviewReview = () => {
         setResult(res.data);
         setSelectedQuestions(new Set(res.data.questions?.map((_, i) => i) || []));
         setView('report');
+        // 保存到最近复盘
+        await autoSave(res.data, content);
         setLoading(false);
-        // 后台保存和匹配（不阻塞UI）
-        autoSave(res.data, content);
+        // 后台匹配经历（不阻塞）
         autoMatchExperiences(res.data.questions);
         return;
       } catch (err) {
@@ -265,9 +267,10 @@ const InterviewReview = () => {
       const reviewId = res?.data?.reviewId;
       setSavedReviewId(reviewId);
       setSaved(true);
-      queryClient.refetchQueries({ queryKey: ['reviews'] });
+      await queryClient.refetchQueries({ queryKey: ['reviews'] });
     } catch (err) {
       console.error('自动保存失败:', err);
+      setError('自动保存失败: ' + (err.message || '未知错误'));
     }
   };
 
