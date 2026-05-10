@@ -54,6 +54,17 @@ class ReviewSaveRequest(BaseModel):
     transcribed_text: Optional[str] = None
 
 
+class ReviewSaveRecordRequest(BaseModel):
+    """仅保存复盘记录（不含题目）"""
+    company: str
+    position: str
+    round: str = "技术面试"
+    date: Optional[str] = None
+    result: str = "pending"
+    summary: Optional[str] = None
+    transcribed_text: Optional[str] = None
+
+
 # ===== API路由 =====
 
 @router.post("/submit-text")
@@ -99,6 +110,39 @@ async def submit_text_review(
         "data": {
             "reviewId": record.id,
             "status": "submitted",
+        }
+    }
+
+
+@router.post("/save-record")
+async def save_review_record(
+    data: ReviewSaveRecordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """仅保存复盘记录（不含题目）- 分析完成后自动调用"""
+    user_id = current_user.id
+
+    record = InterviewRecord(
+        user_id=user_id,
+        company=data.company,
+        position=data.position,
+        round=data.round,
+        date=datetime.strptime(data.date, "%Y-%m-%d") if data.date else None,
+        result=InterviewResult(data.result),
+        summary=data.summary,
+        transcribed_text=data.transcribed_text,
+    )
+
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+
+    return {
+        "code": 0,
+        "data": {
+            "reviewId": record.id,
+            "status": "saved",
         }
     }
 
@@ -272,6 +316,7 @@ async def save_review(
 
     # 保存问题到面试记录
     saved_questions = []
+    questions_with_exp = {}  # experience_id -> [question_data]
     for q in data.questions:
         category_str = q.get("category", "behavior")
         category_map = {
@@ -302,14 +347,23 @@ async def save_review(
             feedback=q.get("analysis") or q.get("improvement"),
         )
         db.add(question)
-        saved_questions.append({
+
+        q_data = {
             "question": q.get("question"),
             "answer": q.get("answer"),
             "category": category_str,
             "level": level_str,
             "analysis": q.get("analysis"),
             "improvement": q.get("improvement"),
-        })
+        }
+        saved_questions.append(q_data)
+
+        # 如果前端指定了 experience_id，直接关联
+        exp_id = q.get("experience_id")
+        if exp_id:
+            if exp_id not in questions_with_exp:
+                questions_with_exp[exp_id] = []
+            questions_with_exp[exp_id].append(q_data)
 
     await db.commit()
 
@@ -319,8 +373,27 @@ async def save_review(
     )
     experiences = result.scalars().all()
 
-    # 使用 LLM 匹配问题到经历
-    if experiences and saved_questions:
+    # 处理手动关联的经历
+    for exp_id, questions in questions_with_exp.items():
+        exp_result = await db.execute(
+            select(Experience).where(
+                Experience.id == exp_id,
+                Experience.user_id == user_id
+            )
+        )
+        exp = exp_result.scalar_one_or_none()
+        if exp:
+            existing = exp.interview_questions or []
+            new_questions = [{**q, "interviewCompany": data.company, "interviewDate": data.date or dt.now().strftime("%Y-%m-%d")} for q in questions]
+            exp.interview_questions = existing + new_questions
+            exp.interview_count = (exp.interview_count or 0) + len(questions)
+            exp.last_mentioned = dt.now()
+
+    await db.commit()
+
+    # 没有手动关联的题目，且有经历时，使用 LLM 自动匹配
+    questions_without_exp = [q for q in saved_questions if not any(q.get("question") == eq for eq_list in questions_with_exp.values() for eq in [qq.get("question")])]
+    if experiences and questions_without_exp and not questions_with_exp:
         exp_list = [
             {
                 "id": exp.id,
@@ -338,18 +411,18 @@ async def save_review(
 {json.dumps(exp_list, ensure_ascii=False, indent=2)}
 
 面试问题：
-{json.dumps(saved_questions, ensure_ascii=False, indent=2)}
+{json.dumps(questions_without_exp, ensure_ascii=False, indent=2)}
 
 请返回JSON格式的匹配结果，格式如下：
-{
+{{
   "matches": [
-    {
+    {{
       "questionIndex": 0,
       "experienceId": "经历ID，如果没有匹配则为null",
       "reason": "匹配原因"
-    }
+    }}
   ]
-}
+}}
 
 注意：
 1. 只有项目经验(project)和实习(internship)类型的问题才需要匹配到经历
@@ -366,31 +439,28 @@ async def save_review(
             match_data = json.loads(match_result)
             matches = match_data.get("matches", [])
 
-            # 按经历ID分组问题
             exp_questions = {}
             for m in matches:
                 q_idx = m.get("questionIndex")
                 exp_id = m.get("experienceId")
-                if exp_id and q_idx is not None and q_idx < len(saved_questions):
+                if exp_id and q_idx is not None and q_idx < len(questions_without_exp):
                     if exp_id not in exp_questions:
                         exp_questions[exp_id] = []
                     exp_questions[exp_id].append({
-                        **saved_questions[q_idx],
+                        **questions_without_exp[q_idx],
                         "interviewCompany": data.company,
                         "interviewDate": data.date or dt.now().strftime("%Y-%m-%d"),
                     })
 
-            # 更新经历的面试问题
             for exp_id, questions in exp_questions.items():
                 exp_result = await db.execute(
                     select(Experience).where(
                         Experience.id == exp_id,
-                        Experience.user_id == user_id  # 确保只能更新自己的经历
+                        Experience.user_id == user_id
                     )
                 )
                 exp = exp_result.scalar_one_or_none()
                 if exp:
-                    # 合并已有问题和新增问题
                     existing = exp.interview_questions or []
                     exp.interview_questions = existing + questions
                     exp.interview_count = (exp.interview_count or 0) + len(questions)
@@ -399,15 +469,7 @@ async def save_review(
             await db.commit()
 
         except Exception as e:
-            print(f"匹配问题到经历失败: {e}")
-            return {
-                "code": 0,
-                "data": {
-                    "reviewId": record.id,
-                    "savedQuestions": len(saved_questions),
-                    "warning": f"题目已保存，但自动关联经历失败：{str(e)}",
-                }
-            }
+            print(f"LLM匹配问题到经历失败: {e}")
 
     return {
         "code": 0,

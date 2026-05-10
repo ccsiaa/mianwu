@@ -2,11 +2,11 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Mic, FileText, MessageSquare, X, Upload, Check } from 'lucide-react';
+import { Mic, FileText, MessageSquare, X, Upload, Check, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { listReviews, analyzeInterview, transcribeAudio, saveReview, deleteReview, updateReview } from '@/lib/api';
+import { listReviews, analyzeInterview, transcribeAudio, saveReview, saveReviewRecord, deleteReview, updateReview, getExperiences } from '@/lib/api';
 import api from '@/lib/api';
 
 const CATEGORY_MAP = {
@@ -39,6 +39,7 @@ const InterviewReview = () => {
   const [speakers, setSpeakers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savingQuestions, setSavingQuestions] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -52,6 +53,7 @@ const InterviewReview = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showOriginalInModal, setShowOriginalInModal] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [questionExperiences, setQuestionExperiences] = useState({});
 
   const handleChangeCategory = (newCategory) => {
     setResult(prev => ({
@@ -78,6 +80,14 @@ const InterviewReview = () => {
     staleTime: 0,
   });
   const reviews = isLoggedIn ? (data?.list || []) : [];
+
+  const { data: experiencesData } = useQuery({
+    queryKey: ['experiences'],
+    queryFn: () => getExperiences().then((res) => res.data),
+    enabled: isLoggedIn,
+    staleTime: 60000,
+  });
+  const experiences = experiencesData?.list || [];
 
   const handleDeleteReview = async (id, e) => {
     e.stopPropagation();
@@ -242,24 +252,45 @@ const InterviewReview = () => {
   };
 
   const autoSave = async (analyzeResult, originalText) => {
-    if (!analyzeResult?.questions?.length) return;
     try {
-      const questionsToSave = analyzeResult.questions.map(q => ({
-        question: q.question, answer: q.answer, category: q.category,
-        level: q.level, analysis: q.analysis, improvement: q.improvement,
-        source_text: q.source_text,
-      }));
-      await saveReview({
+      await saveReviewRecord({
         company, position, round: round || '技术面试',
-        summary: analyzeResult.summary,
-        questions: questionsToSave,
+        summary: analyzeResult?.summary,
         transcribed_text: originalText,
       });
       setSaved(true);
       queryClient.refetchQueries({ queryKey: ['reviews'] });
-      queryClient.refetchQueries({ queryKey: ['experiences'] });
     } catch (err) {
       console.error('自动保存失败:', err);
+    }
+  };
+
+  const handleSaveQuestions = async () => {
+    if (!result?.questions) return;
+    const questionsToSave = result.questions
+      .filter((_, idx) => selectedQuestions.has(idx))
+      .map(q => ({
+        question: q.question, answer: q.answer, category: q.category,
+        level: q.level, analysis: q.analysis, improvement: q.improvement,
+        source_text: q.source_text,
+        experience_id: questionExperiences[q.question] || null,
+      }));
+    if (!questionsToSave.length) { setError('请至少选择一道题目'); return; }
+    setSavingQuestions(true);
+    try {
+      await saveReview({
+        company, position, round: round || '技术面试',
+        summary: result?.summary,
+        questions: questionsToSave,
+        transcribed_text: transcribedText || content,
+      });
+      queryClient.refetchQueries({ queryKey: ['experiences'] });
+      setError('');
+      alert('已沉淀到知识库');
+    } catch (err) {
+      setError('沉淀失败');
+    } finally {
+      setSavingQuestions(false);
     }
   };
 
@@ -550,37 +581,58 @@ const InterviewReview = () => {
                   {filteredQuestions.map(([idx, q]) => {
                     const cat = CATEGORY_MAP[q.category];
                     const isSelected = selectedQuestions.has(idx);
+                    const linkedExp = experiences.find(e => e.id === questionExperiences[q.question]);
                     return (
-                      <div key={idx} className="flex items-start gap-3 py-4 border-t border-[#3F3F46]">
-                        {/* 复选框 */}
-                        <button
-                          onClick={() => toggleQuestion(idx)}
-                          className={`mt-0.5 w-5 h-5 flex-shrink-0 border rounded flex items-center justify-center transition-colors ${
-                            isSelected ? 'bg-[#FAFAFA] border-[#FAFAFA]' : 'border-[#52525B] hover:border-[#71717A]'
-                          }`}
-                        >
-                          {isSelected && <Check size={12} className="text-black" />}
-                        </button>
-                        {/* 题目内容 */}
-                        <button
-                          onClick={() => setSelectedQuestion(q)}
-                          className="flex-1 text-left group"
-                        >
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <p className="text-[#FAFAFA] group-hover:text-[#A1A1AA] transition-colors">{q.question}</p>
-                          </div>
-                          <div className="flex items-center gap-2 mb-1">
-                            {cat && (
-                              <span className={`text-xs px-2 py-0.5 rounded ${cat.bg} ${cat.color}`}>
-                                {cat.label}
+                      <div key={idx} className="py-4 border-t border-[#3F3F46]">
+                        <div className="flex items-start gap-3">
+                          {/* 复选框 */}
+                          <button
+                            onClick={() => toggleQuestion(idx)}
+                            className={`mt-0.5 w-5 h-5 flex-shrink-0 border rounded flex items-center justify-center transition-colors ${
+                              isSelected ? 'bg-[#FAFAFA] border-[#FAFAFA]' : 'border-[#52525B] hover:border-[#71717A]'
+                            }`}
+                          >
+                            {isSelected && <Check size={12} className="text-black" />}
+                          </button>
+                          {/* 题目内容 */}
+                          <button
+                            onClick={() => setSelectedQuestion(q)}
+                            className="flex-1 text-left group"
+                          >
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                              <p className="text-[#FAFAFA] group-hover:text-[#A1A1AA] transition-colors">{q.question}</p>
+                            </div>
+                            <div className="flex items-center gap-2 mb-1">
+                              {cat && (
+                                <span className={`text-xs px-2 py-0.5 rounded ${cat.bg} ${cat.color}`}>
+                                  {cat.label}
+                                </span>
+                              )}
+                              <span className={`text-xs ${q.level === 'good' ? 'text-[#10B981]' : q.level === 'bad' ? 'text-[#EF4444]' : 'text-[#F59E0B]'}`}>
+                                {q.level === 'good' ? '良好' : q.level === 'bad' ? '待改进' : '一般'}
                               </span>
-                            )}
-                            <span className={`text-xs ${q.level === 'good' ? 'text-[#10B981]' : q.level === 'bad' ? 'text-[#EF4444]' : 'text-[#F59E0B]'}`}>
-                              {q.level === 'good' ? '良好' : q.level === 'bad' ? '待改进' : '一般'}
-                            </span>
-                          </div>
-                          {q.answer && <p className="text-sm text-[#52525B] line-clamp-1">{q.answer}</p>}
-                        </button>
+                            </div>
+                            {q.answer && <p className="text-sm text-[#52525B] line-clamp-1">{q.answer}</p>}
+                          </button>
+                        </div>
+                        {/* 关联经历 */}
+                        <div className="ml-8 mt-2">
+                          <select
+                            value={questionExperiences[q.question] || ''}
+                            onChange={(e) => setQuestionExperiences(prev => ({ ...prev, [q.question]: e.target.value || null }))}
+                            className="text-xs bg-transparent border border-[#3F3F46] rounded px-2 py-1 text-[#A1A1AA] focus:border-[#52525B] outline-none min-w-[160px]"
+                          >
+                            <option value="">关联经历...</option>
+                            {experiences.map(exp => (
+                              <option key={exp.id} value={exp.id}>
+                                {exp.company} · {exp.role}
+                              </option>
+                            ))}
+                          </select>
+                          {linkedExp && (
+                            <span className="text-xs text-[#52525B] ml-2">已关联: {linkedExp.company} · {linkedExp.role}</span>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -592,25 +644,28 @@ const InterviewReview = () => {
               )}
             </div>
 
-            {/* 保存状态 */}
+            {/* 操作区 */}
             {result?.questions?.length > 0 && (
-              <div className="py-8 border-t border-[#3F3F46]">
-                {saved ? (
-                  <div className="flex items-center gap-4">
-                    <p className="text-sm text-[#10B981]">已保存到最近复盘</p>
-                    <Button
-                      onClick={() => { setView('list'); resetUpload(); }}
-                      variant="outline"
-                      className="h-10 border-[#3F3F46] text-[#71717A] hover:text-[#FAFAFA] hover:bg-transparent text-xs"
-                    >
-                      返回列表
-                    </Button>
-                  </div>
-                ) : viewingHistoryId ? (
-                  <p className="text-sm text-[#52525B]">历史复盘记录</p>
-                ) : (
-                  <p className="text-sm text-[#52525B]">保存中...</p>
+              <div className="py-8 border-t border-[#3F3F46] space-y-4">
+                {saved && (
+                  <p className="text-sm text-[#10B981]">已保存到最近复盘</p>
                 )}
+                <div className="flex items-center gap-4">
+                  <Button
+                    onClick={handleSaveQuestions}
+                    disabled={savingQuestions || selectedQuestions.size === 0}
+                    className="h-12 bg-white text-black hover:bg-[#E5E5E5] border-0 text-sm font-medium transition-all duration-300"
+                  >
+                    {savingQuestions ? '沉淀中...' : `沉淀到知识库 (${selectedQuestions.size}/${result.questions.length})`}
+                  </Button>
+                  <Button
+                    onClick={() => { setView('list'); resetUpload(); }}
+                    variant="outline"
+                    className="h-12 border-[#3F3F46] text-[#71717A] hover:text-[#FAFAFA] hover:bg-transparent text-sm"
+                  >
+                    返回列表
+                  </Button>
+                </div>
               </div>
             )}
           </div>
