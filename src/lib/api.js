@@ -93,6 +93,8 @@ export const analyzeInterview = (payload) => api.post("/interview/analyze", payl
 export const chatInterview = (payload) => api.post("/interview/chat", payload, { timeout: 300000 });
 export const saveReview = (payload) => api.post("/review/save", payload, { timeout: 60000 });
 export const listReviews = (params = {}) => api.get("/review", { params });
+export const deleteReview = (id) => api.delete(`/review/${id}`);
+export const updateReview = (id, payload) => api.patch(`/review/${id}`, payload);
 export const submitReview = (payload) => api.post("/review/submit-text", payload);
 
 export default api;

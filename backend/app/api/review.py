@@ -1,9 +1,9 @@
 """
 面试复盘API
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete as sql_delete
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
@@ -169,6 +169,75 @@ async def get_review(
             "questions": [q.to_dict() for q in questions],
         }
     }
+
+
+class ReviewUpdateRequest(BaseModel):
+    """更新复盘请求"""
+    company: Optional[str] = None
+    position: Optional[str] = None
+    round: Optional[str] = None
+
+
+@router.delete("/{id}")
+async def delete_review(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除复盘记录及其关联问题"""
+    result = await db.execute(
+        select(InterviewRecord).where(
+            InterviewRecord.id == id,
+            InterviewRecord.user_id == current_user.id
+        )
+    )
+    record = result.scalar_one_or_none()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="记录不存在或无权访问")
+
+    # 删除关联问题
+    await db.execute(
+        sql_delete(InterviewQuestion).where(InterviewQuestion.record_id == id)
+    )
+
+    # 删除记录
+    await db.delete(record)
+    await db.commit()
+
+    return {"code": 0, "data": {"deleted": True}}
+
+
+@router.patch("/{id}")
+async def update_review(
+    id: str,
+    data: ReviewUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新复盘记录（公司、岗位、轮次）"""
+    result = await db.execute(
+        select(InterviewRecord).where(
+            InterviewRecord.id == id,
+            InterviewRecord.user_id == current_user.id
+        )
+    )
+    record = result.scalar_one_or_none()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="记录不存在或无权访问")
+
+    if data.company is not None:
+        record.company = data.company
+    if data.position is not None:
+        record.position = data.position
+    if data.round is not None:
+        record.round = data.round
+
+    await db.commit()
+    await db.refresh(record)
+
+    return {"code": 0, "data": record.to_dict()}
 
 
 @router.post("/save")

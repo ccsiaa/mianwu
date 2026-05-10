@@ -1,16 +1,34 @@
-import { useState, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Mic, FileText, MessageSquare, X, Upload } from 'lucide-react';
+import { Mic, FileText, MessageSquare, X, Upload, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { listReviews, analyzeInterview, transcribeAudio, saveReview } from '@/lib/api';
+import { listReviews, analyzeInterview, transcribeAudio, saveReview, deleteReview, updateReview } from '@/lib/api';
 import api from '@/lib/api';
+
+const CATEGORY_MAP = {
+  project: { label: '项目面', color: 'text-[#60A5FA]', bg: 'bg-[#60A5FA]/10' },
+  basics: { label: '基础知识', color: 'text-[#A78BFA]', bg: 'bg-[#A78BFA]/10' },
+  algorithm: { label: '算法', color: 'text-[#FB923C]', bg: 'bg-[#FB923C]/10' },
+  behavior: { label: '行为面', color: 'text-[#34D399]', bg: 'bg-[#34D399]/10' },
+  system: { label: '系统设计', color: 'text-[#22D3EE]', bg: 'bg-[#22D3EE]/10' },
+};
+
+const CATEGORY_FILTERS = [
+  { key: 'all', label: '全部' },
+  { key: 'project', label: '项目面' },
+  { key: 'basics', label: '基础知识' },
+  { key: 'algorithm', label: '算法' },
+  { key: 'behavior', label: '行为面' },
+  { key: 'system', label: '系统设计' },
+];
 
 const InterviewReview = () => {
   const { isLoggedIn } = useAuth();
+  const queryClient = useQueryClient();
   const [view, setView] = useState('list');
   const [uploadType, setUploadType] = useState(null);
   const [company, setCompany] = useState('');
@@ -31,6 +49,12 @@ const InterviewReview = () => {
   const [selectedQuestion, setSelectedQuestion] = useState(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const [viewingHistoryId, setViewingHistoryId] = useState(null);
+  const [selectedQuestions, setSelectedQuestions] = useState(new Set());
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [showOriginalInModal, setShowOriginalInModal] = useState(false);
+  const [editingReview, setEditingReview] = useState(null);
+  const [editCompany, setEditCompany] = useState('');
+  const [editPosition, setEditPosition] = useState('');
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
 
@@ -40,6 +64,35 @@ const InterviewReview = () => {
     enabled: isLoggedIn,
   });
   const reviews = isLoggedIn ? (data?.list || []) : [];
+
+  const handleDeleteReview = async (id, e) => {
+    e.stopPropagation();
+    if (!confirm('确定要删除这条复盘记录吗？')) return;
+    try {
+      await deleteReview(id);
+      queryClient.invalidateQueries(['reviews']);
+    } catch (err) {
+      setError('删除失败');
+    }
+  };
+
+  const handleStartEdit = (r, e) => {
+    e.stopPropagation();
+    setEditingReview(r.id);
+    setEditCompany(r.company || '');
+    setEditPosition(r.position || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editCompany.trim() || !editPosition.trim()) return;
+    try {
+      await updateReview(editingReview, { company: editCompany, position: editPosition });
+      setEditingReview(null);
+      queryClient.invalidateQueries(['reviews']);
+    } catch (err) {
+      setError('修改失败');
+    }
+  };
 
   const handleUploadClick = (type) => {
     setUploadType(type);
@@ -79,6 +132,45 @@ const InterviewReview = () => {
       dropArea.removeEventListener('drop', handleDrop);
     };
   }, [uploadType]);
+
+  // 分析完成后默认全选
+  useEffect(() => {
+    if (result?.questions?.length) {
+      setSelectedQuestions(new Set(result.questions.map((_, i) => i)));
+      setCategoryFilter('all');
+    }
+  }, [result]);
+
+  const toggleQuestion = (idx) => {
+    setSelectedQuestions(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const filtered = filteredQuestions;
+    const allSelected = filtered.every(([idx]) => selectedQuestions.has(idx));
+    setSelectedQuestions(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        filtered.forEach(([idx]) => next.delete(idx));
+      } else {
+        filtered.forEach(([idx]) => next.add(idx));
+      }
+      return next;
+    });
+  };
+
+  // 带原始索引的筛选后题目列表
+  const filteredQuestions = useMemo(() => {
+    if (!result?.questions) return [];
+    return result.questions
+      .map((q, idx) => [idx, q])
+      .filter(([, q]) => categoryFilter === 'all' || q.category === categoryFilter);
+  }, [result, categoryFilter]);
 
   const handleAnalyze = async () => {
     if (uploadType === 'audio' && selectedFile) {
@@ -129,16 +221,19 @@ const InterviewReview = () => {
   };
 
   const handleSave = async () => {
-    if (!result?.questions?.length) { setError('没有问题可保存'); return; }
+    const questionsToSave = result.questions
+      .filter((_, idx) => selectedQuestions.has(idx))
+      .map(q => ({
+        question: q.question, answer: q.answer, category: q.category,
+        level: q.level, analysis: q.analysis, improvement: q.improvement,
+      }));
+    if (!questionsToSave.length) { setError('请至少选择一道题目'); return; }
     setSaving(true);
     try {
       await saveReview({
         company, position, round: round || '技术面试',
         summary: result?.summary,
-        questions: result.questions.map(q => ({
-          question: q.question, answer: q.answer, category: q.category,
-          level: q.level, analysis: q.analysis, improvement: q.improvement,
-        })),
+        questions: questionsToSave,
         transcribed_text: transcribedText || content,
       });
       setSaved(true);
@@ -183,7 +278,8 @@ const InterviewReview = () => {
     setCompany(''); setPosition(''); setRound(''); setContent('');
     setTranscribedText(''); setSpeakers([]); setError(''); setResult(null);
     setSelectedFile(null); setShowTranscript(false); setSaved(false);
-    setViewingHistoryId(null); setView('list');
+    setViewingHistoryId(null); setSelectedQuestions(new Set()); setCategoryFilter('all');
+    setView('list');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -233,19 +329,46 @@ const InterviewReview = () => {
                   ) : (
                     <div className="space-y-4">
                       {reviews.map((r) => (
-                        <button
-                          key={r.id}
-                          onClick={() => handleViewHistory(r.id)}
-                          className="w-full py-4 border-t border-[#3F3F46] text-left hover:border-[#3F3F46] transition-colors group"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-[#FAFAFA] group-hover:text-[#A1A1AA] transition-colors">{r.company} · {r.position}</p>
-                              <p className="text-xs text-[#52525B] mt-1">{r.date ? new Date(r.date).toLocaleDateString() : ''}</p>
+                        <div key={r.id} className="border-t border-[#3F3F46]">
+                          {editingReview === r.id ? (
+                            <div className="py-4 space-y-3" onClick={e => e.stopPropagation()}>
+                              <div className="flex gap-3">
+                                <Input
+                                  value={editCompany}
+                                  onChange={(e) => setEditCompany(e.target.value)}
+                                  placeholder="公司"
+                                  className="h-10 bg-transparent border-[#3F3F46] text-[#FAFAFA] placeholder:text-[#3F3F46] focus:border-[#52525B] rounded-none text-sm"
+                                />
+                                <Input
+                                  value={editPosition}
+                                  onChange={(e) => setEditPosition(e.target.value)}
+                                  placeholder="岗位"
+                                  className="h-10 bg-transparent border-[#3F3F46] text-[#FAFAFA] placeholder:text-[#3F3F46] focus:border-[#52525B] rounded-none text-sm"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={handleSaveEdit} className="text-xs text-[#10B981] hover:text-[#34D399] transition-colors">保存</button>
+                                <button onClick={() => setEditingReview(null)} className="text-xs text-[#52525B] hover:text-[#71717A] transition-colors">取消</button>
+                              </div>
                             </div>
-                            <span className="text-xs text-[#52525B]">→</span>
-                          </div>
-                        </button>
+                          ) : (
+                            <button
+                              onClick={() => handleViewHistory(r.id)}
+                              className="w-full py-4 text-left transition-colors group"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-[#FAFAFA] group-hover:text-[#A1A1AA] transition-colors">{r.company} · {r.position}</p>
+                                  <p className="text-xs text-[#52525B] mt-1">{r.date ? new Date(r.date).toLocaleDateString() : ''}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <button onClick={(e) => handleStartEdit(r, e)} className="text-xs text-[#52525B] hover:text-[#FAFAFA] transition-colors">编辑</button>
+                                  <button onClick={(e) => handleDeleteReview(r.id, e)} className="text-xs text-[#52525B] hover:text-[#EF4444] transition-colors">删除</button>
+                                </div>
+                              </div>
+                            </button>
+                          )}
+                        </div>
                       ))}
                     </div>
                   )}
@@ -361,43 +484,104 @@ const InterviewReview = () => {
 
             {/* 问题列表 */}
             <div className="py-8 border-t border-[#3F3F46]">
-              <p className="text-xs text-[#52525B] tracking-wider mb-6">问题详情</p>
-              {result?.questions?.length > 0 ? (
-                <div className="space-y-6">
-                  {result.questions.map((q, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedQuestion(q)}
-                      className="w-full text-left py-4 border-t border-[#3F3F46] hover:border-[#3F3F46] transition-colors group"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-[#FAFAFA] group-hover:text-[#A1A1AA] transition-colors">{q.question}</p>
-                        <span className={`text-xs ${q.level === 'good' ? 'text-[#10B981]' : q.level === 'bad' ? 'text-[#EF4444]' : 'text-[#F59E0B]'}`}>
-                          {q.level === 'good' ? '良好' : q.level === 'bad' ? '待改进' : '一般'}
-                        </span>
+              <div className="flex items-center justify-between mb-6">
+                <p className="text-xs text-[#52525B] tracking-wider">问题详情</p>
+                {!viewingHistoryId && result?.questions?.length > 0 && (
+                  <button onClick={toggleSelectAll} className="text-xs text-[#71717A] hover:text-[#FAFAFA] transition-colors">
+                    {filteredQuestions.every(([idx]) => selectedQuestions.has(idx)) ? '取消全选' : '全选'}
+                  </button>
+                )}
+              </div>
+
+              {/* 类别筛选 */}
+              {result?.questions?.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {CATEGORY_FILTERS.map(f => {
+                    const count = f.key === 'all'
+                      ? result.questions.length
+                      : result.questions.filter(q => q.category === f.key).length;
+                    if (count === 0 && f.key !== 'all') return null;
+                    return (
+                      <button
+                        key={f.key}
+                        onClick={() => setCategoryFilter(f.key)}
+                        className={`text-xs px-3 py-1.5 rounded transition-colors ${
+                          categoryFilter === f.key
+                            ? 'bg-[#FAFAFA] text-black'
+                            : 'border border-[#3F3F46] text-[#71717A] hover:text-[#FAFAFA] hover:border-[#52525B]'
+                        }`}
+                      >
+                        {f.label} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {filteredQuestions.length > 0 ? (
+                <div className="space-y-1">
+                  {filteredQuestions.map(([idx, q]) => {
+                    const cat = CATEGORY_MAP[q.category];
+                    const isSelected = selectedQuestions.has(idx);
+                    return (
+                      <div key={idx} className="flex items-start gap-3 py-4 border-t border-[#3F3F46]">
+                        {/* 复选框 */}
+                        {!viewingHistoryId && (
+                          <button
+                            onClick={() => toggleQuestion(idx)}
+                            className={`mt-0.5 w-5 h-5 flex-shrink-0 border rounded flex items-center justify-center transition-colors ${
+                              isSelected ? 'bg-[#FAFAFA] border-[#FAFAFA]' : 'border-[#52525B] hover:border-[#71717A]'
+                            }`}
+                          >
+                            {isSelected && <Check size={12} className="text-black" />}
+                          </button>
+                        )}
+                        {/* 题目内容 */}
+                        <button
+                          onClick={() => setSelectedQuestion(q)}
+                          className="flex-1 text-left group"
+                        >
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <p className="text-[#FAFAFA] group-hover:text-[#A1A1AA] transition-colors">{q.question}</p>
+                          </div>
+                          <div className="flex items-center gap-2 mb-1">
+                            {cat && (
+                              <span className={`text-xs px-2 py-0.5 rounded ${cat.bg} ${cat.color}`}>
+                                {cat.label}
+                              </span>
+                            )}
+                            <span className={`text-xs ${q.level === 'good' ? 'text-[#10B981]' : q.level === 'bad' ? 'text-[#EF4444]' : 'text-[#F59E0B]'}`}>
+                              {q.level === 'good' ? '良好' : q.level === 'bad' ? '待改进' : '一般'}
+                            </span>
+                          </div>
+                          {q.answer && <p className="text-sm text-[#52525B] line-clamp-1">{q.answer}</p>}
+                        </button>
                       </div>
-                      {q.answer && <p className="text-sm text-[#52525B] line-clamp-1">{q.answer}</p>}
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <p className="text-sm text-[#52525B]">暂无问题</p>
+                <p className="text-sm text-[#52525B]">
+                  {result?.questions?.length > 0 ? '该类别下暂无题目' : '暂无问题'}
+                </p>
               )}
             </div>
 
             {/* 保存 */}
-            {!viewingHistoryId && (
+            {!viewingHistoryId && result?.questions?.length > 0 && (
               <div className="py-8 border-t border-[#3F3F46]">
                 {saved ? (
                   <p className="text-sm text-[#10B981]">已保存到知识库</p>
                 ) : (
-                  <Button
-                    onClick={handleSave}
-                    disabled={saving || !result?.questions?.length}
-                    className="h-12 bg-white text-black hover:bg-[#E5E5E5] border-0 text-sm font-medium transition-all duration-300"
-                  >
-                    {saving ? '保存中...' : '保存到知识库'}
-                  </Button>
+                  <div className="flex items-center gap-4">
+                    <Button
+                      onClick={handleSave}
+                      disabled={saving || selectedQuestions.size === 0}
+                      className="h-12 bg-white text-black hover:bg-[#E5E5E5] border-0 text-sm font-medium transition-all duration-300"
+                    >
+                      {saving ? '保存中...' : `保存选中题目 (${selectedQuestions.size}/${result.questions.length})`}
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
@@ -434,48 +618,77 @@ const InterviewReview = () => {
 
         {/* 问题详情弹窗 */}
         {selectedQuestion && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={() => setSelectedQuestion(null)}>
-            <div className="w-full max-w-xl bg-[#0A0A0B] border border-[#3F3F46] p-8" onClick={e => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={() => { setSelectedQuestion(null); setShowOriginalInModal(false); }}>
+            <div className="w-full max-w-xl max-h-[85vh] bg-[#0A0A0B] border border-[#3F3F46] p-8 flex flex-col" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
-                <p className="text-xs text-[#52525B] tracking-wider">问题详情</p>
-                <button onClick={() => setSelectedQuestion(null)} className="text-[#52525B] hover:text-[#FAFAFA]">
+                <p className="text-xs text-[#52525B] tracking-wider">{showOriginalInModal ? '面试原文' : '问题详情'}</p>
+                <button onClick={() => { setSelectedQuestion(null); setShowOriginalInModal(false); }} className="text-[#52525B] hover:text-[#FAFAFA]">
                   <X size={18} />
                 </button>
               </div>
 
-              <p className="text-[#FAFAFA] mb-4">{selectedQuestion.question}</p>
+              {showOriginalInModal ? (
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  <p className="text-xs text-[#52525B] mb-4">以下是完整的面试转写文本：</p>
+                  <div className="text-sm text-[#A1A1AA] whitespace-pre-wrap leading-relaxed">
+                    {speakers?.length > 0
+                      ? speakers.map((item, idx) => `[${item.speaker === '0' ? '面试官' : '候选人'}]: ${item.text}`).join('\n\n')
+                      : (transcribedText || content)
+                    }
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  <p className="text-[#FAFAFA] mb-4">{selectedQuestion.question}</p>
 
-              <div className="flex gap-3 mb-6">
-                <span className={`text-xs px-3 py-1 rounded ${selectedQuestion.level === 'good' ? 'bg-[#10B981]/10 text-[#10B981]' : selectedQuestion.level === 'bad' ? 'bg-[#EF4444]/10 text-[#EF4444]' : 'bg-[#F59E0B]/10 text-[#F59E0B]'}`}>
-                  {selectedQuestion.level === 'good' ? '良好' : selectedQuestion.level === 'bad' ? '待改进' : '一般'}
-                </span>
-                <span className="text-xs text-[#52525B]">{selectedQuestion.category || '其他'}</span>
+                  <div className="flex gap-3 mb-6">
+                    <span className={`text-xs px-3 py-1 rounded ${selectedQuestion.level === 'good' ? 'bg-[#10B981]/10 text-[#10B981]' : selectedQuestion.level === 'bad' ? 'bg-[#EF4444]/10 text-[#EF4444]' : 'bg-[#F59E0B]/10 text-[#F59E0B]'}`}>
+                      {selectedQuestion.level === 'good' ? '良好' : selectedQuestion.level === 'bad' ? '待改进' : '一般'}
+                    </span>
+                    {CATEGORY_MAP[selectedQuestion.category] && (
+                      <span className={`text-xs px-3 py-1 rounded ${CATEGORY_MAP[selectedQuestion.category].bg} ${CATEGORY_MAP[selectedQuestion.category].color}`}>
+                        {CATEGORY_MAP[selectedQuestion.category].label}
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedQuestion.answer && (
+                    <div className="mb-6">
+                      <p className="text-xs text-[#52525B] mb-2">你的回答</p>
+                      <p className="text-sm text-[#A1A1AA]">{selectedQuestion.answer}</p>
+                    </div>
+                  )}
+
+                  {selectedQuestion.analysis && (
+                    <div className="mb-6">
+                      <p className="text-xs text-[#52525B] mb-2">分析</p>
+                      <p className="text-sm text-[#A1A1AA]">{selectedQuestion.analysis}</p>
+                    </div>
+                  )}
+
+                  {selectedQuestion.improvement && (
+                    <div className="p-4 border border-[#3F3F46] mb-6">
+                      <p className="text-xs text-[#FAFAFA] mb-2">改进建议</p>
+                      <p className="text-sm text-[#A1A1AA]">{selectedQuestion.improvement}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-4 pt-4 border-t border-[#3F3F46]">
+                {showOriginalInModal ? (
+                  <Button onClick={() => setShowOriginalInModal(false)} variant="outline" className="flex-1 h-12 border-[#3F3F46] text-[#71717A] hover:text-[#FAFAFA] hover:bg-transparent text-sm font-medium transition-all duration-300">
+                    返回问题详情
+                  </Button>
+                ) : (
+                  <Button onClick={() => setShowOriginalInModal(true)} variant="outline" className="flex-1 h-12 border-[#3F3F46] text-[#71717A] hover:text-[#FAFAFA] hover:bg-transparent text-sm font-medium transition-all duration-300">
+                    查看原文
+                  </Button>
+                )}
+                <Button onClick={() => { setSelectedQuestion(null); setShowOriginalInModal(false); }} className="flex-1 h-12 bg-white text-black hover:bg-[#E5E5E5] border-0 text-sm font-medium transition-all duration-300">
+                  关闭
+                </Button>
               </div>
-
-              {selectedQuestion.answer && (
-                <div className="mb-6">
-                  <p className="text-xs text-[#52525B] mb-2">你的回答</p>
-                  <p className="text-sm text-[#A1A1AA]">{selectedQuestion.answer}</p>
-                </div>
-              )}
-
-              {selectedQuestion.analysis && (
-                <div className="mb-6">
-                  <p className="text-xs text-[#52525B] mb-2">分析</p>
-                  <p className="text-sm text-[#A1A1AA]">{selectedQuestion.analysis}</p>
-                </div>
-              )}
-
-              {selectedQuestion.improvement && (
-                <div className="p-4 border border-[#3F3F46] mb-6">
-                  <p className="text-xs text-[#FAFAFA] mb-2">改进建议</p>
-                  <p className="text-sm text-[#A1A1AA]">{selectedQuestion.improvement}</p>
-                </div>
-              )}
-
-              <Button onClick={() => setSelectedQuestion(null)} className="w-full h-12 bg-white text-black hover:bg-[#E5E5E5] border-0 text-sm font-medium transition-all duration-300">
-                关闭
-              </Button>
             </div>
           </div>
         )}
