@@ -77,7 +77,7 @@ JD内容：
       "id": 1,
       "question": "完整的问题内容",
       "answer": "候选人的回答内容（如果有）",
-      "source_text": "从面试记录中提取的该问题对应的原始回答片段，去除语气词（嗯、啊、那个、就是说、然后、对吧等），保留实质内容。如果没有回答内容则为空字符串",
+      "source_text": "该问题对应的原始回答片段（去语气词，无则留空）",
       "category": "project/basics/algorithm/behavior/system",
       "level": "good/average/bad",
       "score": 3,
@@ -289,7 +289,7 @@ JD内容：
             position=position or "未知岗位",
             round=round or "技术面试",
         )
-        response = llm_service.chat([{"role": "user", "content": prompt}], max_tokens=8000)
+        response = llm_service.chat([{"role": "user", "content": prompt}], max_tokens=16000)
 
         # 移除可能的 markdown 代码块标记
         if "```" in response:
@@ -305,8 +305,21 @@ JD内容：
                 try:
                     return json.loads(response[start:end])
                 except json.JSONDecodeError:
-                    pass
-            print(f"JSON解析失败，原始响应长度: {len(response)}")
+                    # 尝试修复截断的 JSON（补全缺失的括号）
+                    partial = response[start:end]
+                    for fix_attempts in [
+                        partial + '"}]',      # 补全最后一个字符串和数组
+                        partial + '"}]}}',    # 补全字符串、数组和外层对象
+                        partial + ']}',       # 补全数组和对象
+                        partial + '}',        # 补全对象
+                    ]:
+                        try:
+                            result = json.loads(fix_attempts)
+                            print(f"JSON截断修复成功，原始长度: {len(response)}")
+                            return result
+                        except json.JSONDecodeError:
+                            continue
+            print(f"JSON解析失败，原始响应长度: {len(response)}, 尾部: ...{response[-200:] if len(response) > 200 else response}")
             return {
                 "summary": "分析完成，但部分内容解析失败",
                 "overall_score": 3,
