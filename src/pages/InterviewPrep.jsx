@@ -3,7 +3,7 @@ import { Send, Sparkles, ChevronDown, ChevronUp, Bot, User } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { generatePrepPlan, chatInterview } from '@/lib/api';
+import { generatePrepPlan, chatInterviewStream } from '@/lib/api';
 
 const InterviewPrep = () => {
   const [step, setStep] = useState('input');
@@ -70,32 +70,45 @@ const InterviewPrep = () => {
 
     const userMessage = { role: 'user', content: inputMessage };
     const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    // 先占位一条空的 assistant 消息，用于流式填充
+    const assistantPlaceholder = { role: 'assistant', content: '' };
+    setMessages([...newMessages, assistantPlaceholder]);
     setInputMessage('');
     setChatLoading(true);
 
-    try {
-      const context = `目标公司：${company}\n目标岗位：${position}\nJD内容：${jdContent}\n\n面试准备计划：\n${JSON.stringify(prepPlan, null, 2)}`;
+    const context = `目标公司：${company}\n目标岗位：${position}\nJD内容：${jdContent.slice(0, 500)}\n\n面试准备核心：${prepPlan?.overview || ''}\n技术重点：${prepPlan?.tech_prep?.core_topics?.slice(0, 3).join('、') || ''}`;
 
-      const result = await chatInterview({
+    chatInterviewStream(
+      {
         messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-        context: context,
-      });
-
-      const assistantMessage = {
-        role: 'assistant',
-        content: result.data?.response || '抱歉，我暂时无法回答这个问题。',
-      };
-      setMessages([...newMessages, assistantMessage]);
-    } catch (err) {
-      const errorMessage = {
-        role: 'assistant',
-        content: '抱歉，网络出现问题，请稍后重试。',
-      };
-      setMessages([...newMessages, errorMessage]);
-    } finally {
-      setChatLoading(false);
-    }
+        context,
+      },
+      // onChunk：每次收到新内容，追加到最后一条消息
+      (chunk) => {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            role: 'assistant',
+            content: updated[updated.length - 1].content + chunk,
+          };
+          return updated;
+        });
+      },
+      // onDone
+      () => setChatLoading(false),
+      // onError
+      () => {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            role: 'assistant',
+            content: '抱歉，网络出现问题，请稍后重试。',
+          };
+          return updated;
+        });
+        setChatLoading(false);
+      }
+    );
   };
 
   const handleKeyPress = (e) => {

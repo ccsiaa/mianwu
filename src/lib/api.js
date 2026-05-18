@@ -91,6 +91,45 @@ export const generateResume = (payload) => api.post("/resume/generate", payload,
 export const generatePrepPlan = (payload) => api.post("/interview/prep-plan", payload, { timeout: 300000 });
 export const analyzeInterview = (payload) => api.post("/interview/analyze", payload, { timeout: 300000 });
 export const chatInterview = (payload) => api.post("/interview/chat", payload, { timeout: 300000 });
+
+// 流式对话：返回 EventSource 风格的 fetch 流
+export const chatInterviewStream = async (payload, onChunk, onDone, onError) => {
+  const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  const token = api.defaults.headers.common.Authorization;
+  try {
+    const response = await fetch(`${baseURL}/interview/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: token } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`请求失败: ${response.status}`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop(); // 保留最后一个不完整的行
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.error) { onError?.(data.error); return; }
+            if (data.content) onChunk(data.content);
+          } catch {}
+        }
+      }
+    }
+    onDone?.();
+  } catch (err) {
+    onError?.(err.message);
+  }
+};
 export const saveReview = (payload) => api.post("/review/save", payload, { timeout: 60000 });
 export const saveReviewRecord = (payload) => api.post("/review/save-record", payload, { timeout: 60000 });
 export const matchQuestionExperiences = (payload) => api.post("/review/match-experiences", payload, { timeout: 60000 });

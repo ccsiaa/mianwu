@@ -125,14 +125,20 @@ async def evaluate_answer(data: EvaluateRequest):
 
 @router.post("/chat")
 async def chat(data: ChatRequest):
-    """面试准备对话"""
-    try:
-        result = await asyncio.to_thread(
-            interview_service.chat,
-            messages=data.messages,
-            context=data.context,
-        )
-        return {"code": 0, "data": result}
-    except Exception as e:
-        print(f"对话失败: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"对话失败: {str(e)}")
+    """面试准备对话（流式）"""
+
+    async def generate():
+        try:
+            async for chunk in interview_service.chat_stream(
+                messages=data.messages,
+                context=data.context,
+            ):
+                yield f"data: {json.dumps({'content': chunk})}\n\n"
+        except Exception as e:
+            print(f"对话失败: {traceback.format_exc()}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+    )

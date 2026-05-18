@@ -20,7 +20,7 @@ class LLMService:
         messages: List[dict],
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 16000,
+        max_tokens: int = 2000,
     ) -> str:
         """
         同步对话
@@ -57,12 +57,30 @@ class LLMService:
             data = response.json()
             return data["choices"][0]["message"]["content"]
 
+    async def chat_stream_simple(
+        self,
+        messages: List[dict],
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 800,
+    ) -> AsyncGenerator[str, None]:
+        """
+        通用流式对话（用于普通对话接口）
+        """
+        async for chunk in self.chat_stream(
+            messages=messages,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            yield chunk
+
     async def chat_stream(
         self,
         messages: List[dict],
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 2000,
+        max_tokens: int = 800,
     ) -> AsyncGenerator[str, None]:
         """
         流式对话

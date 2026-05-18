@@ -177,7 +177,7 @@ JD内容：
             position=position or "未知岗位",
             jd_content=jd_content,
         )
-        response = llm_service.chat([{"role": "user", "content": prompt}], max_tokens=4000)
+        response = llm_service.chat([{"role": "user", "content": prompt}], max_tokens=2000)
 
         # 移除markdown代码块标记
         if "```" in response:
@@ -221,7 +221,43 @@ JD内容：
         Raises:
             Exception: 当LLM调用失败时抛出异常
         """
-        system_prompt = f"""你是一个专业的面试准备顾问。你正在帮助用户准备面试。
+        system_prompt = self._build_chat_system_prompt(context)
+
+        response = llm_service.chat(
+            messages=messages,
+            system_prompt=system_prompt,
+            max_tokens=800,
+        )
+
+        return {"response": response}
+
+    async def chat_stream(
+        self,
+        messages: List[dict],
+        context: str,
+    ) -> AsyncGenerator[str, None]:
+        """
+        面试准备对话（流式）
+
+        Args:
+            messages: 对话历史
+            context: 上下文信息（JD、准备计划等）
+
+        Yields:
+            流式返回的内容片段
+        """
+        system_prompt = self._build_chat_system_prompt(context)
+
+        async for chunk in llm_service.chat_stream(
+            messages=messages,
+            system_prompt=system_prompt,
+            max_tokens=800,
+        ):
+            yield chunk
+
+    def _build_chat_system_prompt(self, context: str) -> str:
+        """构建对话系统提示词"""
+        return f"""你是一个专业的面试准备顾问。你正在帮助用户准备面试。
 
 以下是用户的面试准备上下文：
 {context}
@@ -238,14 +274,6 @@ JD内容：
 - 给出具体例子和建议
 - 语气友善专业
 - 如果用户问的问题不在上下文中，根据你的知识给出合理建议"""
-
-        response = llm_service.chat(
-            messages=messages,
-            system_prompt=system_prompt,
-            max_tokens=2000,
-        )
-
-        return {"response": response}
 
     def analyze_interview(
         self,
@@ -289,7 +317,7 @@ JD内容：
             position=position or "未知岗位",
             round=round or "技术面试",
         )
-        response = llm_service.chat([{"role": "user", "content": prompt}], max_tokens=16000)
+        response = llm_service.chat([{"role": "user", "content": prompt}], max_tokens=6000)
 
         # 移除可能的 markdown 代码块标记
         if "```" in response:

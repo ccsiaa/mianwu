@@ -3,6 +3,7 @@
 """
 from pydantic_settings import BaseSettings
 from typing import Optional
+import secrets
 
 
 class Settings(BaseSettings):
@@ -12,10 +13,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "面悟"
     APP_ENV: str = "development"
     DEBUG: bool = True
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    SECRET_KEY: str = secrets.token_hex(32)
 
     # 数据库配置
-    DATABASE_URL: str = "sqlite+aiosqlite:///./mianwu.db"
+    DATABASE_URL: str = "postgresql+asyncpg://localhost/mianwu"
 
     # LLM配置（小米MiMo）
     LLM_API_KEY: str = ""
@@ -31,7 +32,7 @@ class Settings(BaseSettings):
     SERPER_API_KEY: Optional[str] = None
 
     # JWT配置
-    JWT_SECRET_KEY: str = "your-jwt-secret-key"
+    JWT_SECRET_KEY: str = secrets.token_hex(32)
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
